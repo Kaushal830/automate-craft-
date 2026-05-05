@@ -8,6 +8,7 @@ export type AutomationIntegration = {
 export type AutomationBlueprint = {
   trigger: string;
   actions: string[];
+  output: string;
   integrations: AutomationIntegration[];
   estimatedCost: number;
 };

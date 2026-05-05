@@ -88,10 +88,11 @@ function getMockResponse(prompt: string): { content: string; blueprint: Automati
 
   if (lower.includes("whatsapp") || lower.includes("lead") || lower.includes("crm")) {
     return {
-      content: `I've designed a **lead notification workflow** for you. When a new lead enters your CRM, I'll extract the contact details and send a personalized **WhatsApp message** within seconds.\n\nThis ensures instant engagement with every new prospect.`,
+      content: "",
       blueprint: {
         trigger: "New lead added (CRM)",
         actions: ["Extract contact details", "Send WhatsApp message"],
+        output: "Personalized WhatsApp message sent to lead",
         integrations: [
           { id: "hubspot", name: "HubSpot", icon: "🔶", connected: false },
           { id: "whatsapp", name: "WhatsApp Business", icon: "💬", connected: false },
@@ -103,10 +104,11 @@ function getMockResponse(prompt: string): { content: string; blueprint: Automati
 
   if (lower.includes("slack") || lower.includes("deal") || lower.includes("notification")) {
     return {
-      content: `I'll set up a **deal notification pipeline**. When a deal is marked as **closed-won** in your CRM, a rich Slack message will be posted to your sales channel with deal value, contact info, and a celebration emoji 🎉.\n\nYour team will never miss a win.`,
+      content: "",
       blueprint: {
         trigger: "Deal closed-won (HubSpot)",
         actions: ["Format deal summary", "Post to Slack channel"],
+        output: "Rich Slack message posted to sales channel",
         integrations: [
           { id: "hubspot", name: "HubSpot", icon: "🔶", connected: false },
           { id: "slack", name: "Slack", icon: "💬", connected: false },
@@ -118,10 +120,11 @@ function getMockResponse(prompt: string): { content: string; blueprint: Automati
 
   if (lower.includes("notion") || lower.includes("booking") || lower.includes("calendly")) {
     return {
-      content: `Here's the plan: each new **Calendly booking** will automatically create a structured **Notion page** with the attendee's name, email, booking time, and any notes they provided.\n\nPerfect for keeping your meeting database organized.`,
+      content: "",
       blueprint: {
         trigger: "New booking (Calendly)",
         actions: ["Parse booking details", "Create Notion page"],
+        output: "Structured Notion page created in meeting database",
         integrations: [
           { id: "calendly", name: "Calendly", icon: "📅", connected: false },
           { id: "notion", name: "Notion", icon: "📓", connected: false },
@@ -133,10 +136,11 @@ function getMockResponse(prompt: string): { content: string; blueprint: Automati
 
   // Default: Typeform → Sheets
   return {
-    content: `I've created a blueprint based on your request. I'll set up a trigger for **new Typeform entries**, map the data fields, and add a new row in your **Google Sheet**.\n\nPlease connect your accounts below to activate this automation.`,
+    content: "",
     blueprint: {
       trigger: "New form submission (Typeform)",
       actions: ["Format response data", "Create spreadsheet row (Google Sheets)"],
+      output: "New row added to Google Sheet",
       integrations: [
         { id: "typeform", name: "Typeform", icon: "📝", connected: false },
         { id: "gsheets", name: "Google Sheets", icon: "📊", connected: false },
@@ -253,8 +257,8 @@ export default function BuildPage() {
 
         dispatch({ type: "ADD_MESSAGE", payload: { sessionId: activeSession.id, message: aiMsg } });
 
-        // End streaming after words finish
-        const wordCount = mockData.content.split(" ").length;
+        // End streaming immediately since we show System UI directly
+        const delay = mockData.content ? mockData.content.split(" ").length * 28 + 500 : 50;
         setTimeout(() => {
           if (abortRef.current) return;
           setIsGenerating(false);
@@ -262,7 +266,7 @@ export default function BuildPage() {
             type: "UPDATE_MESSAGE",
             payload: { sessionId: activeSession.id, message: { ...aiMsg, isStreaming: false } },
           });
-        }, wordCount * 28 + 500);
+        }, delay);
       }, 2500);
     },
     [activeSession, isGenerating]

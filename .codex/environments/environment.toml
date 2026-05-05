@@ -8,7 +8,7 @@ script = ""
 [[actions]]
 name = "Run"
 icon = "run"
-command = "npm dev run"
+command = "npm run dev"
 
 [[actions]]
 name = "run"

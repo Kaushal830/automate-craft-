@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ArrowUp, Square, Slash } from "lucide-react";
+import { ArrowUp, Square, Slash, Zap } from "lucide-react";
 
 /* ────────────────────────────────────────────
    Constants
@@ -147,27 +147,16 @@ export function InputComposer({
 
       {/* Composer Box */}
       <div
-        className={`relative flex items-end gap-1.5 rounded-2xl border p-2 transition-all duration-200 ${
+        className={`relative flex items-end gap-1.5 rounded-2xl border p-2 transition-all duration-300 ${
           isFocused
-            ? "border-[var(--build-accent)]/30 bg-[var(--build-surface)] shadow-[0_0_0_3px_var(--build-accent-glow),0_-4px_40px_rgba(0,0,0,0.3)]"
-            : "border-[var(--build-border)] bg-[var(--build-surface)] shadow-[0_-4px_40px_rgba(0,0,0,0.2)]"
+            ? "border-[var(--build-accent)]/50 bg-[var(--build-surface)] shadow-[0_8px_32px_rgba(0,0,0,0.4),0_0_0_1px_var(--build-accent)]"
+            : "border-[var(--build-border)] bg-[var(--build-surface)] shadow-[0_-4px_40px_rgba(0,0,0,0.2)] hover:border-[var(--build-border-hover)]"
         }`}
       >
-        {/* Slash command hint */}
         <div className="relative">
-          <button
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[var(--build-text-tertiary)] hover:bg-white/[0.06] hover:text-[var(--build-text-secondary)] transition-all"
-            onMouseEnter={() => setSlashTooltip(true)}
-            onMouseLeave={() => setSlashTooltip(false)}
-            aria-label="Commands"
-          >
-            <Slash className="h-4 w-4" />
-          </button>
-          {slashTooltip && (
-            <div className="absolute -top-9 left-1/2 -translate-x-1/2 px-2 py-1 rounded-md bg-[var(--build-surface-raised)] border border-[var(--build-border)] text-[10px] font-medium text-[var(--build-text-secondary)] shadow-lg whitespace-nowrap animate-fade-slide-down z-20">
-              Type / for commands (coming soon)
-            </div>
-          )}
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[var(--build-text-tertiary)] bg-white/[0.02]">
+            <Zap className="h-4 w-4" />
+          </div>
         </div>
 
         {/* Textarea */}
@@ -209,18 +198,11 @@ export function InputComposer({
               <ArrowUp className="h-4 w-4 stroke-[2.5]" />
             </button>
           )}
-          {/* Keyboard shortcut hint */}
-          <span className="text-[8px] text-[var(--build-text-tertiary)] font-mono opacity-60">⏎</span>
         </div>
       </div>
 
       {/* Footer */}
-      <div className="mt-3 flex items-center justify-between px-1">
-        <div className="flex items-center gap-1.5 text-[10px] text-[var(--build-text-tertiary)] opacity-40">
-          <Slash className="h-3 w-3" />
-          <span>AutomateCraft AI</span>
-        </div>
-
+      <div className="mt-3 flex items-center justify-end px-1">
         {/* Credits micro-bar */}
         <div className="flex items-center gap-2">
           <div className="w-16 h-[3px] rounded-full bg-white/[0.06] overflow-hidden">
@@ -229,8 +211,8 @@ export function InputComposer({
               style={{ width: `${creditPercent}%` }}
             />
           </div>
-          <span className="text-[10px] text-[var(--build-text-tertiary)] tabular-nums">
-            {creditsUsed}/{creditsTotal}
+          <span className="text-[10px] text-[var(--build-text-tertiary)] tabular-nums font-medium tracking-wide">
+            {creditsUsed}/{creditsTotal} CREDITS
           </span>
         </div>
       </div>

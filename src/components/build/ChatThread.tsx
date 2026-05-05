@@ -8,10 +8,10 @@ import { AutomationMessage, AutomationBlueprint } from "@/types/automation";
    Constants — outside component to avoid re-creation
    ──────────────────────────────────────────── */
 const THINKING_STATUSES = [
-  "Understanding your workflow…",
-  "Selecting integrations…",
-  "Generating your blueprint…",
-  "Almost ready…",
+  "Analyzing request...",
+  "Building workflow...",
+  "Connecting integrations...",
+  "Ready to deploy",
 ] as const;
 
 const FOLLOW_UP_SUGGESTIONS = [
@@ -116,60 +116,77 @@ function renderMarkdown(text: string) {
 }
 
 /* ────────────────────────────────────────────
-   Blueprint Card (inline structured output)
+   Blueprint Card (System UI)
    ──────────────────────────────────────────── */
 function BlueprintCard({ blueprint, onConnect }: { blueprint: AutomationBlueprint; onConnect?: () => void }) {
-  const [expanded, setExpanded] = useState(false);
-
   return (
-    <div className="mt-4 rounded-xl border border-[var(--build-border)] bg-gradient-to-b from-white/[0.03] to-transparent overflow-hidden animate-fade-slide-up">
-      {/* Header */}
-      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-[var(--build-border)]">
-        <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[var(--build-accent-soft)]">
-          <Zap className="h-3 w-3 text-[var(--build-accent)]" />
+    <div className="mt-2 w-full flex flex-col gap-4 animate-fade-slide-up">
+      <div className="flex items-center gap-2">
+        <Check className="h-4 w-4 text-emerald-500" />
+        <span className="text-[14px] font-medium text-[var(--build-text-primary)]">Pipeline generated successfully</span>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 relative">
+        {/* Trigger Block */}
+        <div className="flex flex-col gap-2 p-4 rounded-xl border border-[var(--build-border)] bg-[var(--build-surface-raised)] relative overflow-hidden z-10">
+          <div className="absolute top-0 left-0 w-1 h-full bg-sky-500" />
+          <span className="text-[11px] font-bold uppercase tracking-wider text-sky-500">Trigger</span>
+          <span className="text-[14px] font-medium text-[var(--build-text-primary)]">{blueprint.trigger}</span>
         </div>
-        <span className="text-[13px] font-semibold text-[var(--build-text-primary)]">Automation Blueprint</span>
+
+        <div className="hidden md:flex absolute left-1/3 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 items-center justify-center h-8 w-8 rounded-full bg-[var(--build-surface)] border border-[var(--build-border)]">
+          <ArrowRight className="h-4 w-4 text-[var(--build-text-tertiary)]" />
+        </div>
+
+        {/* Steps Block */}
+        <div className="flex flex-col gap-2 p-4 rounded-xl border border-[var(--build-border)] bg-[var(--build-surface-raised)] relative overflow-hidden z-10">
+          <div className="absolute top-0 left-0 w-1 h-full bg-violet-500" />
+          <span className="text-[11px] font-bold uppercase tracking-wider text-violet-500">Steps</span>
+          <div className="flex flex-col gap-1.5">
+            {blueprint.actions.map((action, i) => (
+              <div key={i} className="flex items-center gap-2 text-[13px] text-[var(--build-text-secondary)]">
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-violet-500/20 text-violet-400 text-[9px] font-bold">{i + 1}</span>
+                <span className="truncate">{action}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="hidden md:flex absolute left-2/3 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 items-center justify-center h-8 w-8 rounded-full bg-[var(--build-surface)] border border-[var(--build-border)]">
+          <ArrowRight className="h-4 w-4 text-[var(--build-text-tertiary)]" />
+        </div>
+
+        {/* Output Block */}
+        <div className="flex flex-col gap-2 p-4 rounded-xl border border-[var(--build-border)] bg-[var(--build-surface-raised)] relative overflow-hidden z-10">
+          <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500" />
+          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-500">Output</span>
+          <span className="text-[14px] font-medium text-[var(--build-text-primary)]">{blueprint.output}</span>
+        </div>
       </div>
 
-      {/* Grid */}
-      <div className="p-4 space-y-3">
-        <div className="grid grid-cols-[80px_1fr] gap-y-2.5 gap-x-3 text-[13px]">
-          <span className="text-[var(--build-text-tertiary)] font-medium">Trigger</span>
-          <span className="text-[var(--build-text-primary)]">{blueprint.trigger}</span>
-
-          <span className="text-[var(--build-text-tertiary)] font-medium">Actions</span>
-          <span className="text-[var(--build-text-primary)]">
-            {blueprint.actions.join(" → ")}
-          </span>
-
-          <span className="text-[var(--build-text-tertiary)] font-medium">Apps</span>
-          <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex flex-wrap items-center justify-between p-4 rounded-xl border border-[var(--build-border)] bg-white/[0.02]">
+        <div className="flex items-center gap-3">
+          <span className="text-[13px] text-[var(--build-text-tertiary)] font-medium">Required Apps:</span>
+          <div className="flex items-center gap-2">
             {blueprint.integrations.map((app) => (
-              <span key={app.id} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/[0.04] border border-[var(--build-border)] text-[12px] text-[var(--build-text-secondary)]">
+              <span key={app.id} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/[0.04] border border-[var(--build-border)] text-[12px] font-medium text-[var(--build-text-secondary)]">
                 <span>{app.icon}</span>
                 {app.name}
               </span>
             ))}
           </div>
-
-          <span className="text-[var(--build-text-tertiary)] font-medium">Cost</span>
-          <span className="text-amber-400 text-[12px] font-medium">~{blueprint.estimatedCost} credits / run</span>
         </div>
-      </div>
-
-      {/* Actions */}
-      <div className="flex items-center gap-2 px-4 py-3 border-t border-[var(--build-border)] bg-white/[0.01]">
-        <button
-          onClick={onConnect}
-          className="flex items-center gap-2 rounded-lg bg-[var(--build-accent)] px-3.5 py-2 text-[12px] font-medium text-white transition-all hover:brightness-110 hover:shadow-[0_0_16px_var(--build-accent-glow)] active:scale-[0.97]"
-        >
-          <Link2 className="h-3.5 w-3.5" />
-          Connect Apps
-        </button>
-        <button className="flex items-center gap-2 rounded-lg border border-[var(--build-border)] bg-white/[0.02] px-3.5 py-2 text-[12px] font-medium text-[var(--build-text-secondary)] transition-all hover:bg-white/[0.04] hover:text-[var(--build-text-primary)] active:scale-[0.97]">
-          <ArrowRight className="h-3.5 w-3.5" />
-          View in Preview
-        </button>
+        
+        <div className="flex items-center gap-3 mt-4 md:mt-0">
+          <span className="text-amber-400 text-[12px] font-medium bg-amber-400/10 px-2 py-1 rounded-md">~{blueprint.estimatedCost} credits</span>
+          <button
+            onClick={onConnect}
+            className="flex items-center gap-2 rounded-lg bg-[var(--build-accent)] px-4 py-2 text-[13px] font-semibold text-white transition-all hover:brightness-110 active:scale-[0.97]"
+          >
+            <Link2 className="h-4 w-4" />
+            Connect & Deploy
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -237,7 +254,7 @@ function FollowUpChips({ onSuggestionClick }: { onSuggestionClick?: (text: strin
 }
 
 /* ────────────────────────────────────────────
-   AI Message
+   AI Message (System Output)
    ──────────────────────────────────────────── */
 function AiMessage({
   msg,
@@ -251,53 +268,39 @@ function AiMessage({
   onSuggestionClick?: (text: string) => void;
 }) {
   const { displayed, isDone } = useWordStream(msg.content, !!msg.isStreaming);
-  const [isHovered, setIsHovered] = useState(false);
 
   return (
-    <div className="mb-6 animate-fade-slide-up">
-      <div
-        className="flex w-full gap-3 group"
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-      >
-        {/* Avatar */}
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-sky-600 text-white text-[10px] font-bold shadow-sm shadow-sky-500/20 mt-0.5">
-          AC
+    <div className="mb-8 animate-fade-slide-up w-full">
+      {/* Blueprint card (after streaming completes) */}
+      {!msg.isStreaming && isDone && msg.blueprint ? (
+        <div className="w-full">
+          <BlueprintCard
+            blueprint={msg.blueprint}
+            onConnect={() => onActivateBlueprint?.(msg.id)}
+          />
         </div>
-
-        {/* Content — borderless, full-bleed */}
-        <div className="flex-1 min-w-0 max-w-[85%]">
-          {/* Left accent line + text */}
-          <div className="border-l-[1.5px] border-[var(--build-accent)]/20 pl-4">
-            {renderMarkdown(displayed)}
-
-            {/* Streaming cursor */}
-            {msg.isStreaming && !isDone && (
-              <span className="inline-block w-[2px] h-[18px] bg-[var(--build-accent)] rounded-full ml-0.5 animate-pulse align-text-bottom" />
-            )}
+      ) : (
+        <div className="flex w-full gap-3 group">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--build-accent)]/10 text-[var(--build-accent)]">
+            <Zap className="h-4 w-4" />
           </div>
-
-          {/* Blueprint card (after streaming completes) */}
-          {!msg.isStreaming && isDone && msg.blueprint && (
-            <div className="ml-0 mt-1">
-              <BlueprintCard
-                blueprint={msg.blueprint}
-                onConnect={() => onActivateBlueprint?.(msg.id)}
-              />
+          <div className="flex-1 min-w-0 max-w-[85%] pt-1">
+            <div className="text-[14px] text-[var(--build-text-secondary)]">
+              {renderMarkdown(displayed)}
+              {msg.isStreaming && !isDone && (
+                <span className="inline-block w-[2px] h-[14px] bg-[var(--build-accent)] ml-1 animate-pulse align-middle" />
+              )}
             </div>
-          )}
-
-          {/* Action toolbar */}
-          <div className="ml-4">
-            <ActionToolbar visible={isHovered && isDone && !msg.isStreaming} />
           </div>
-
-          {/* Follow-up chips — only on last completed AI message */}
-          {isLast && isDone && !msg.isStreaming && (
-            <FollowUpChips onSuggestionClick={onSuggestionClick} />
-          )}
         </div>
-      </div>
+      )}
+
+      {/* Follow-up chips */}
+      {isLast && isDone && !msg.isStreaming && msg.blueprint && (
+        <div className="mt-4">
+          <FollowUpChips onSuggestionClick={onSuggestionClick} />
+        </div>
+      )}
     </div>
   );
 }
@@ -315,7 +318,7 @@ function UserMessage({ msg }: { msg: AutomationMessage }) {
         onMouseEnter={() => setShowTime(true)}
         onMouseLeave={() => setShowTime(false)}
       >
-        <div className="rounded-2xl rounded-tr-md bg-[var(--build-accent)]/10 border border-[var(--build-accent)]/15 px-4 py-3 text-[14px] text-[var(--build-text-primary)] whitespace-pre-wrap leading-relaxed">
+        <div className="rounded-xl bg-[var(--build-surface-raised)] border border-[var(--build-border)] px-4 py-3 text-[14px] text-[var(--build-text-primary)] font-medium shadow-sm">
           {msg.content}
         </div>
         <div
@@ -344,32 +347,20 @@ function GeneratingState() {
   }, []);
 
   return (
-    <div className="flex w-full gap-3 mb-6 animate-fade-slide-up">
-      {/* Avatar with breathing glow */}
-      <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-sky-600 text-white text-[10px] font-bold mt-0.5 animate-breathe">
-        AC
-        <div className="absolute inset-0 rounded-full bg-sky-500/20 animate-pulse-glow" />
-      </div>
-
-      <div className="flex-1 min-w-0 max-w-[85%]">
-        <div className="border-l-[1.5px] border-[var(--build-accent)]/20 pl-4">
-          <div className="flex items-center gap-3 py-2">
-            {/* Bouncing dots */}
-            <div className="flex gap-[3px] items-center">
-              {[0, 1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="w-[5px] h-[5px] bg-[var(--build-accent)] rounded-full animate-dot-bounce"
-                  style={{ animationDelay: `${i * 150}ms` }}
-                />
-              ))}
-            </div>
-
-            {/* Rotating status label */}
-            <span className="text-[13px] text-[var(--build-text-tertiary)] font-medium transition-all duration-300">
-              {THINKING_STATUSES[statusIdx]}
-            </span>
-          </div>
+    <div className="flex w-full items-center justify-center py-6 mb-4 animate-fade-slide-up">
+      <div className="flex flex-col items-center gap-4">
+        {/* Progress Spinner */}
+        <div className="relative flex items-center justify-center h-12 w-12">
+          <svg className="animate-spin h-full w-full text-[var(--build-accent)]/20" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <Zap className="absolute h-4 w-4 text-[var(--build-accent)]" />
+        </div>
+        
+        {/* Status Text */}
+        <div className="text-[13px] font-medium text-[var(--build-text-primary)] tracking-wide animate-pulse">
+          {THINKING_STATUSES[statusIdx]}
         </div>
       </div>
     </div>
@@ -377,32 +368,54 @@ function GeneratingState() {
 }
 
 /* ────────────────────────────────────────────
-   Empty State Hero
+   Empty State Hero (with Trust Signals)
    ──────────────────────────────────────────── */
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center h-full pt-8 pb-8 relative">
-      {/* Ambient gradient orbs */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[350px] w-[450px] rounded-full bg-sky-500/[0.04] blur-[120px] animate-breathe" />
-        <div className="absolute top-1/3 left-1/3 h-[200px] w-[250px] rounded-full bg-violet-500/[0.03] blur-[100px] animate-breathe" style={{ animationDelay: "2s" }} />
-      </div>
-
-      <div className="relative z-10 flex flex-col items-center">
-        {/* Logo with breathing glow */}
-        <div className="relative mb-6">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-sky-500/15 to-sky-600/5 border border-sky-500/10 shadow-[0_0_40px_rgba(14,165,233,0.1)]">
-            <Zap className="h-7 w-7 text-sky-400" />
-          </div>
-          <div className="absolute inset-0 rounded-2xl animate-pulse-glow" />
+    <div className="flex flex-col items-center justify-center h-full pt-4 pb-12 w-full">
+      <div className="relative z-10 flex flex-col items-center w-full max-w-2xl">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--build-surface-raised)] border border-[var(--build-border)] mb-4 shadow-sm">
+          <Zap className="h-6 w-6 text-[var(--build-text-primary)]" />
         </div>
 
-        <h1 className="text-[22px] font-semibold text-[var(--build-text-primary)] mb-2 tracking-tight">
-          What would you like to automate?
+        <h1 className="text-[24px] font-semibold text-[var(--build-text-primary)] mb-2 tracking-tight">
+          AutomateCraft Command Center
         </h1>
-        <p className="text-[14px] text-[var(--build-text-tertiary)] text-center max-w-[380px] leading-relaxed">
-          Describe your workflow in plain language. We'll build the blueprint, connect the apps, and deploy it for you.
+        <p className="text-[14px] text-[var(--build-text-tertiary)] text-center max-w-[420px] mb-12">
+          Describe your process, and the system will instantly build and deploy the automation pipeline.
         </p>
+
+        {/* Trust Signals: Use Cases */}
+        <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="p-4 rounded-xl border border-[var(--build-border)] bg-[var(--build-surface)]">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-sky-500 font-semibold text-[12px] uppercase tracking-wider">Use Case</span>
+            </div>
+            <p className="text-[14px] text-[var(--build-text-primary)] font-medium mb-1">Lead Management</p>
+            <p className="text-[13px] text-[var(--build-text-tertiary)]">"When a HubSpot deal closes, notify Slack and create a Notion project."</p>
+          </div>
+          
+          <div className="p-4 rounded-xl border border-[var(--build-border)] bg-[var(--build-surface)]">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-emerald-500 font-semibold text-[12px] uppercase tracking-wider">Use Case</span>
+            </div>
+            <p className="text-[14px] text-[var(--build-text-primary)] font-medium mb-1">Customer Support</p>
+            <p className="text-[13px] text-[var(--build-text-tertiary)]">"Route Zendesk tickets to specific Discord channels based on priority."</p>
+          </div>
+        </div>
+
+        {/* Trust Signals: Social Proof */}
+        <div className="w-full mt-8 p-5 rounded-xl border border-[var(--build-border)] bg-gradient-to-br from-white/[0.02] to-transparent">
+          <div className="flex items-start gap-4">
+            <div className="h-10 w-10 shrink-0 rounded-full bg-white/[0.1] flex items-center justify-center text-[12px] font-bold text-[var(--build-text-primary)] border border-white/[0.05]">
+              SJ
+            </div>
+            <div>
+              <p className="text-[13px] italic text-[var(--build-text-secondary)] mb-2">"AutomateCraft reduced our manual data entry time by 90%. We deployed our first pipeline in minutes without touching any code."</p>
+              <p className="text-[12px] font-semibold text-[var(--build-text-primary)]">Sarah Jenkins, Ops Lead</p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
