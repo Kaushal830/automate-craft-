@@ -10,55 +10,50 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { motion, useScroll, useSpring, useTransform, AnimatePresence, useReducedMotion } from "framer-motion";
-import { ArrowUp, Mic, Paperclip, Sparkles, MessageSquareText, Play, ChevronRight, ArrowRight } from "lucide-react";
+import {
+  ArrowRight,
+  Send,
+} from "lucide-react";
 const HeroScene = dynamic(() => import("@/components/HeroScene"), { ssr: false });
 
-import SocialMiniButtons from "@/components/home/SocialMiniButtons";
+import WorkflowStarters from "@/components/home/WorkflowStarters";
+import StatusStrip from "@/components/home/StatusStrip";
+import SocialProofStrip from "@/components/home/SocialProofStrip";
+import ConnectorIntelligence from "@/components/home/ConnectorIntelligence";
+import TrustProof from "@/components/home/TrustProof";
+import TrustEngine from "@/components/home/TrustEngine";
+import IntegrationLogoStrip from "@/components/home/IntegrationLogoStrip";
+import Testimonials from "@/components/home/Testimonials";
 import { LoginModal } from "@/components/auth/LoginModal";
 import type { AuthenticatedUser } from "@/lib/automation";
 
-type SpeechRecognitionResultEventLike = {
-  resultIndex: number;
-  results: {
-    length: number;
-    [index: number]: {
-      isFinal: boolean;
-      0: {
-        transcript: string;
-      };
-    };
-  };
-};
-
-type SpeechRecognitionLike = {
-  continuous: boolean;
-  interimResults: boolean;
-  onstart: (() => void) | null;
-  onresult: ((event: SpeechRecognitionResultEventLike) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-};
-
-type SpeechRecognitionWindow = Window & {
-  SpeechRecognition?: new () => SpeechRecognitionLike;
-  webkitSpeechRecognition?: new () => SpeechRecognitionLike;
-};
-
-const promptExamples = [
-  "Send WhatsApp message on new leads",
-  "Save form data to Google Sheets",
-  "Notify me when payment is received",
-  "Follow up with leads after 24 hours",
-  "Sync CRM contacts to my email list",
+/* ─── "How it works" steps — reframed as intent → deploy pipeline ─── */
+const pipelineSteps = [
+  {
+    step: "01",
+    title: "Describe the workflow",
+    desc: "Type what you need in plain English. The AI builds the full automation in under three minutes.",
+    status: "Automation generated",
+    statusColor: "text-accent",
+    dotColor: "bg-accent",
+  },
+  {
+    step: "02",
+    title: "Review every step",
+    desc: "See exactly what runs before anything goes live. Every trigger, action, and connection is visible.",
+    status: "Ready for review",
+    statusColor: "text-amber-400",
+    dotColor: "bg-amber-400",
+  },
+  {
+    step: "03",
+    title: "Deploy with confidence",
+    desc: "Connect your apps, run a test, and go live. Retry handling and logging are built in.",
+    status: "Validation passed",
+    statusColor: "text-emerald-400",
+    dotColor: "bg-emerald-400",
+  },
 ];
-
-/* LOGIC EXPLAINED:
-This hero already had rich motion, but some of it ignored reduced-motion preferences.
-The fix keeps the same premium animation for most users and falls back to instant or
-static transitions for people who prefer less movement.
-*/
 
 export default function HeroSection({
   user,
@@ -73,33 +68,11 @@ export default function HeroSection({
   const reduceMotion = useReducedMotion();
   const [prompt, setPrompt] = useState("");
   const [isPromptFocused, setIsPromptFocused] = useState(false);
-  const [exampleIndex, setExampleIndex] = useState(0);
-  const [isListening, setIsListening] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  
-  const [ultraThinking, setUltraThinking] = useState(false);
 
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const heightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      if (text) {
-        const fileContent = `\n\n[Attached File: ${file.name}]\n${text}\n`;
-        setPrompt((prev) => prev + fileContent);
-      }
-      event.target.value = "";
-    };
-    reader.readAsText(file);
-  };
-  
   const { scrollY } = useScroll();
   const heroYRaw = useTransform(scrollY, reduceMotion ? [0, 1] : [0, 280, 700], reduceMotion ? [0, 0] : [0, -16, -40]);
   const heroOpacityRaw = useTransform(scrollY, reduceMotion ? [0, 1] : [0, 600], reduceMotion ? [1, 1] : [1, 0.94]);
@@ -118,7 +91,7 @@ export default function HeroSection({
     const element = promptRef.current;
     if (!element) return;
     element.style.height = "0px";
-    element.style.height = `${Math.min(element.scrollHeight, 260)}px`;
+    element.style.height = `${Math.min(element.scrollHeight, 200)}px`;
   });
 
   useEffect(() => {
@@ -128,15 +101,6 @@ export default function HeroSection({
       if (heightTimerRef.current) clearTimeout(heightTimerRef.current);
     };
   }, [prompt]);
-
-  useEffect(() => {
-    if (prompt.trim().length > 0) return;
-    const interval = setInterval(() => {
-      setExampleIndex((current) => (current + 1) % promptExamples.length);
-    }, 3500);
-    return () => clearInterval(interval);
-  }, [prompt]);
-
 
   const handleSubmit = () => {
     if (!prompt.trim()) return;
@@ -148,56 +112,12 @@ export default function HeroSection({
 
     const chatId = Math.random().toString(36).substring(7);
     const params = new URLSearchParams({ prompt });
-    if (ultraThinking) params.set("ultra", "1");
     router.push(`/dashboard/chat/${chatId}?${params.toString()}`);
   };
 
-
-  const toggleListening = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (isListening) {
-      if (recognitionRef.current) recognitionRef.current.stop();
-      setIsListening(false);
-      return;
-    }
-
-    const browserWindow = window as SpeechRecognitionWindow;
-    const SpeechRecognition =
-      browserWindow.SpeechRecognition || browserWindow.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert("Speech recognition is not supported in your browser. Please use Chrome, Edge, or Safari.");
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognitionRef.current = recognition;
-    recognition.continuous = true;
-    recognition.interimResults = true;
-
-    let startText = promptRef.current?.value || "";
-    if (startText.trim()) startText = startText.trim() + " ";
-
-    recognition.onstart = () => setIsListening(true);
-    recognition.onresult = (event) => {
-      let finalTranscript = "";
-      let interimTranscript = "";
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) finalTranscript += event.results[i][0].transcript;
-        else interimTranscript += event.results[i][0].transcript;
-      }
-      if (finalTranscript) startText += finalTranscript + " ";
-      setPrompt(startText + interimTranscript);
-    };
-    recognition.onerror = () => setIsListening(false);
-    recognition.onend = () => setIsListening(false);
-    
-    try {
-      recognition.start();
-    } catch (err) {
-      console.error(err);
-    }
+  const handleStarterSelect = (starterPrompt: string) => {
+    setPrompt(starterPrompt);
+    promptRef.current?.focus();
   };
 
   const hasPrompt = prompt.trim().length > 0;
@@ -205,39 +125,43 @@ export default function HeroSection({
 
   return (
     <div className="relative w-full">
+      {/* ════════════════════════════════════════════
+          HERO — Intent → Blueprint Surface
+          ════════════════════════════════════════════ */}
       <section
         id="home"
         className="relative flex min-h-screen items-center overflow-hidden pb-10 pt-24 md:pb-14"
       >
         <HeroScene isPromptFocused={isPromptFocused} />
         {!user && (
-          <>
-            <div className="pointer-events-none absolute bottom-[-9rem] left-1/2 h-72 w-[46rem] -translate-x-1/2 rounded-full bg-accent/[0.05] blur-[140px]" />
-          </>
+          <div className="pointer-events-none absolute bottom-[-9rem] left-1/2 h-72 w-[46rem] -translate-x-1/2 rounded-full bg-accent/[0.05] blur-[140px]" />
         )}
 
         <motion.div
           style={{ y: heroY, opacity: heroOpacity }}
-          className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 items-center px-4 sm:px-6 lg:px-8"
+          className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 items-center px-4 sm:px-6 lg:px-8"
         >
-          <div className="mx-auto w-full max-w-4xl text-center">
+          <div className="mx-auto w-full">
+            {/* ── Headline ── */}
             <motion.div
               initial={{ opacity: 0, y: reduceMotion ? 0 : 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: reduceMotion ? 0 : 0.7, ease: [0.22, 1, 0.36, 1] }}
+              className="text-center mb-10"
             >
-              <h1 className="mx-auto max-w-4xl text-[3.3rem] font-semibold leading-[0.94] tracking-[-0.08em] text-foreground sm:text-[4.4rem] lg:text-[5.4rem]">
+              <h1 className="mx-auto max-w-4xl text-[3rem] font-semibold leading-[0.94] tracking-[-0.04em] text-foreground sm:text-[4rem] lg:text-[4.8rem]">
                 {user
-                  ? <>Ready to build<br />Automation,<br /><span className="text-accent">{user.name || "friend"}</span></>
-                  : <>Describe it.<br /><span className="text-accent">We build it.</span></>}
+                  ? <>Describe it.<br /><span className="text-accent">Deploy it.</span></>
+                  : <>Describe the workflow.<br /><span className="text-accent">Review every step.</span><br />Run it with confidence.</>}
               </h1>
-              <p className="mx-auto mt-6 max-w-2xl text-[1.02rem] leading-8 text-white/50 sm:text-lg">
+              <p className="mx-auto mt-6 max-w-2xl text-[1rem] leading-8 text-white/45 sm:text-lg">
                 {user
-                  ? "Describe what you need and we'll generate it for you."
-                  : "Tell us what to automate in plain English — AI builds your workflow, you test and deploy in minutes."}
+                  ? "Describe what you need — we'll build and test it for you."
+                  : "Tell us what to automate. We'll build it, test it, and deploy it."}
               </p>
             </motion.div>
 
+            {/* ── Centered Composer ── */}
             <motion.div
               initial={{ opacity: 0, y: reduceMotion ? 0 : 22 }}
               animate={{ opacity: 1, y: 0 }}
@@ -246,272 +170,159 @@ export default function HeroSection({
                 delay: reduceMotion ? 0 : 0.08,
                 ease: [0.22, 1, 0.36, 1],
               }}
-              className="group relative mx-auto my-10 max-w-[600px] cursor-text"
-              onClick={() => promptRef.current?.focus()}
+              className="mx-auto max-w-3xl"
             >
-              <div className="relative">
+              <div className="space-y-4">
                 <div
-                  aria-hidden="true"
-                  className="pointer-events-none absolute left-0 right-0 top-1/2 -translate-y-1/2 h-56 w-full rounded-full bg-accent/5 blur-[80px]"
-                />
-
-                <div className="rounded-[16px] bg-[#0a0a0a] p-1.5 text-left shadow-[0_24px_50px_rgba(0,0,0,0.2),0_10px_20px_rgba(0,0,0,0.1)] transition-[box-shadow,transform] duration-300 ease-out group-hover:shadow-[0_0_80px_rgba(79,142,247,0.12),0_32px_60px_rgba(79,142,247,0.1),0_16px_32px_rgba(28,28,28,0.12)]">
-                  <div
-                    className={`relative isolate overflow-hidden rounded-[16px] border px-4 py-4 shadow-[0_10px_24px_rgba(0,0,0,0.1)] transition-all duration-300 ease-out sm:px-5 sm:py-4.5 ${
-                      hasPrompt
-                        ? "border-accent/50 shadow-[0_0_0_4px_rgba(59,130,246,0.2),0_16px_34px_rgba(59,130,246,0.15)] scale-[1.01]"
-                        : isPromptFocused
-                        ? "border-accent/40 shadow-[0_0_0_3px_rgba(59,130,246,0.1),0_16px_34px_rgba(0,0,0,0.4)] scale-[1.005]"
-                        : "border-white/10 group-hover:border-white/20 group-hover:shadow-[0_18px_42px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.06)]"
-                    }`}
-                  >
-                    <div className="pointer-events-none absolute inset-0 rounded-[16px] bg-[linear-gradient(180deg,#1c1c1c_0%,#0a0a0a_100%)]" />
-                    <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-white/15 blur-[1px]" />
-                    
-                    <motion.div 
-                      className="pointer-events-none absolute inset-0 rounded-[16px] opacity-0 transition-opacity duration-300 group-hover:opacity-100" 
-                      animate={{
-                        background: hasPrompt 
-                          ? ["radial-gradient(circle at top, rgba(59,130,246,0.2), transparent 55%)"]
-                          : ["radial-gradient(circle at top, rgba(59,130,246,0.05), transparent 45%)", "radial-gradient(circle at top, rgba(59,130,246,0.15), transparent 50%)", "radial-gradient(circle at top, rgba(59,130,246,0.05), transparent 45%)"]
-                      }}
-                      transition={
-                        hasPrompt || reduceMotion
-                          ? {}
-                          : { duration: 4, repeat: Infinity, ease: "easeInOut" }
-                      }
+                  className="group relative cursor-text"
+                  onClick={() => promptRef.current?.focus()}
+                >
+                  <div className="relative">
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-0 right-0 top-1/2 -translate-y-1/2 h-56 w-full rounded-full bg-accent/5 blur-[80px]"
                     />
 
-                    <div className="relative">
-                      {!prompt ? (
-                        <div className="pointer-events-none absolute inset-0 text-[1rem] leading-[1.55] sm:text-[1.05rem] overflow-hidden">
-                          <AnimatePresence mode="popLayout">
-                            <motion.div
-                              key={exampleIndex}
-                              initial={{ opacity: 0, x: reduceMotion ? 0 : 18 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              exit={{ opacity: 0, x: reduceMotion ? 0 : -18 }}
-                              transition={{ duration: reduceMotion ? 0 : 0.55, ease: [0.22, 1, 0.36, 1] }}
-                              className="absolute inset-0 text-white/40"
-                            >
-                              {promptExamples[exampleIndex]}
-                            </motion.div>
-                          </AnimatePresence>
+                    <div className="rounded-[16px] bg-[#0a0a0a] p-1.5 text-left shadow-[0_24px_50px_rgba(0,0,0,0.2),0_10px_20px_rgba(0,0,0,0.1)] transition-[box-shadow,transform] duration-300 ease-out group-hover:shadow-[0_0_80px_rgba(79,142,247,0.12),0_32px_60px_rgba(79,142,247,0.1),0_16px_32px_rgba(28,28,28,0.12)]">
+                      <div
+                        className={`relative isolate overflow-hidden rounded-[16px] border px-4 py-4 shadow-[0_10px_24px_rgba(0,0,0,0.1)] transition-all duration-300 ease-out sm:px-5 sm:py-4.5 ${
+                          hasPrompt
+                            ? "border-accent/50 shadow-[0_0_0_4px_rgba(59,130,246,0.2),0_16px_34px_rgba(59,130,246,0.15)] scale-[1.01]"
+                            : isPromptFocused
+                            ? "border-accent/40 shadow-[0_0_0_3px_rgba(59,130,246,0.1),0_16px_34px_rgba(0,0,0,0.4)] scale-[1.005]"
+                            : "border-white/10 group-hover:border-white/20 group-hover:shadow-[0_18px_42px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.06)]"
+                        }`}
+                      >
+                        <div className="pointer-events-none absolute inset-0 rounded-[16px] bg-[linear-gradient(180deg,#1c1c1c_0%,#0a0a0a_100%)]" />
+                        <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-white/15 blur-[1px]" />
+
+                        {/* Label */}
+                        <div className="relative mb-2">
+                          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/20">
+                            Describe your automation
+                          </span>
                         </div>
-                      ) : null}
 
-                      {/* LOGIC EXPLAINED:
-                      The textarea keeps the custom outer prompt-box focus state,
-                      but drops any native browser focus rectangle by using the
-                      shared `prompt-textarea` reset class. */}
-                      <textarea
-                        ref={promptRef}
-                        rows={1}
-                        value={prompt}
-                        onFocus={() => setIsPromptFocused(true)}
-                        onBlur={() => setIsPromptFocused(false)}
-                        onChange={(event) => setPrompt(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" && !event.shiftKey) {
-                            event.preventDefault();
-                            if (canSubmit) handleSubmit();
-                          }
-                        }}
-                        className="prompt-textarea caret-accent min-h-[72px] w-full resize-none border-none bg-transparent text-[1rem] leading-[1.55] text-white outline-none sm:min-h-[78px] sm:text-[1.05rem]"
-                      />
-                    </div>
+                        <div className="relative">
+                          {!prompt ? (
+                            <div className="pointer-events-none absolute inset-0 text-[1rem] leading-[1.55] sm:text-[1.05rem] overflow-hidden">
+                              <span className="text-white/30">
+                                Describe the automation you want to build...
+                              </span>
+                            </div>
+                          ) : null}
 
-                    <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-3.5">
-                      <div className="flex items-center gap-2.5">
-                        <input 
-                          type="file" 
-                          ref={fileInputRef} 
-                          onChange={handleFileUpload}
-                          className="hidden" 
-                          accept=".txt,.csv,.json,.md"
-                        />
-                        <motion.button
-                          onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
-                          type="button"
-                          aria-label="Attach file"
-                          whileTap={reduceMotion ? undefined : { scale: 0.94 }}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full transition-all duration-300 ease-out z-10 bg-white/5 text-white/40 hover:bg-white/10 hover:text-white"
-                        >
-                          <Paperclip className="h-4 w-4" />
-                        </motion.button>
-
-                        <div className="relative z-20 flex items-center">
-                          <button
-                            type="button"
-                            data-static-hover
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setUltraThinking((current) => !current);
+                          <textarea
+                            ref={promptRef}
+                            rows={1}
+                            value={prompt}
+                            onFocus={() => setIsPromptFocused(true)}
+                            onBlur={() => setIsPromptFocused(false)}
+                            onChange={(event) => setPrompt(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" && !event.shiftKey) {
+                                event.preventDefault();
+                                if (canSubmit) handleSubmit();
+                              }
                             }}
-                            aria-label="Toggle Ultra Thinking"
-                            aria-pressed={ultraThinking}
-                            className={`inline-flex h-9 items-center gap-2 rounded-full border px-2.5 text-[12px] font-semibold transition-all duration-200 ${
-                              ultraThinking
-                                ? "border-accent/25 bg-accent/10 text-white shadow-[0_0_18px_rgba(59,130,246,0.14)]"
-                                : "border-white/8 bg-white/5 text-white/58"
+                            className="prompt-textarea caret-accent min-h-[72px] w-full resize-none border-none bg-transparent text-[1rem] leading-[1.55] text-white outline-none sm:min-h-[78px] sm:text-[1.05rem]"
+                          />
+                        </div>
+
+                        {/* Bottom bar */}
+                        <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-3.5">
+                          <p className="text-[12px] font-medium tracking-[0.02em] text-white/25 hidden sm:block">
+                            ↵ Generate automation
+                          </p>
+
+                          <motion.button
+                            onClick={(e) => { e.stopPropagation(); handleSubmit(); }}
+                            disabled={!canSubmit}
+                            aria-label="Generate automation"
+                            whileTap={canSubmit && !reduceMotion ? { scale: 0.94 } : undefined}
+                            className={`inline-flex h-9 items-center gap-2 rounded-full px-4 text-[12px] font-semibold transition-all duration-300 ease-out z-10 ${
+                              canSubmit
+                                ? "bg-accent text-white shadow-[0_8px_18px_rgba(79,142,247,0.3)] hover:scale-[1.03] hover:bg-[#5c95fb]"
+                                : "bg-white/10 text-white/30 opacity-80 border border-white/5"
                             }`}
                           >
-                            <span
-                              className={`flex h-5 w-5 items-center justify-center rounded-full ${
-                                ultraThinking ? "bg-accent/18 text-accent" : "bg-white/8 text-white/48"
-                              }`}
-                            >
-                              <Sparkles className="h-3 w-3" />
-                            </span>
-                            <span>Ultra Thinking</span>
-                            <span
-                              className={`relative h-5 w-9 rounded-full p-[2px] transition-colors duration-200 ${
-                                ultraThinking ? "bg-accent/80" : "bg-white/16"
-                              }`}
-                            >
-                              <motion.span
-                                className="block h-4 w-4 rounded-full bg-white shadow-[0_2px_8px_rgba(0,0,0,0.28)]"
-                                animate={{ x: ultraThinking ? 16 : 0 }}
-                                transition={{ duration: reduceMotion ? 0 : 0.18, ease: [0.22, 1, 0.36, 1] }}
-                              />
-                            </span>
-                          </button>
+                            <Send className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">Generate automation</span>
+                          </motion.button>
                         </div>
-
-                        <p className="text-[0.7rem] font-medium tracking-[0.02em] text-white/30 hidden sm:block ml-1">
-                          Press Enter to generate
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2.5 ml-auto">
-                        <motion.button
-                          onClick={toggleListening}
-                          type="button"
-                          aria-label={isListening ? "Stop listening" : "Start dictation"}
-                          whileTap={reduceMotion ? undefined : { scale: 0.94 }}
-                          className={`inline-flex h-9 w-9 items-center justify-center rounded-full transition-all duration-300 ease-out z-10 ${
-                            isListening
-                              ? "bg-red-500/20 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] animate-pulse"
-                              : "bg-white/5 text-white/40 hover:bg-white/10 hover:text-white"
-                          }`}
-                        >
-                          <Mic className="h-4 w-4" />
-                        </motion.button>
-
-                        <motion.button
-                          onClick={(e) => { e.stopPropagation(); handleSubmit(); }}
-                          disabled={!canSubmit}
-                          aria-label="Send automation prompt"
-                          whileTap={canSubmit && !reduceMotion ? { scale: 0.94, rotate: 8 } : undefined}
-                          className={`inline-flex h-9 w-9 items-center justify-center rounded-full transition-all duration-300 ease-out z-10 ${
-                            canSubmit
-                              ? "bg-accent text-white shadow-[0_8px_18px_rgba(79,142,247,0.3)] hover:scale-[1.05] hover:bg-[#5c95fb]"
-                              : "bg-white/10 text-white/30 opacity-80 border border-white/5"
-                          }`}
-                        >
-                          <ArrowUp className="h-4 w-4" />
-                        </motion.button>
                       </div>
                     </div>
                   </div>
                 </div>
+
+                {/* Workflow starters */}
+                {!hasPrompt && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: reduceMotion ? 0 : 0.5, duration: reduceMotion ? 0 : 0.5 }}
+                  >
+                    <p className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.2em] text-white/15">
+                      Start with a real workflow
+                    </p>
+                    <WorkflowStarters onSelect={handleStarterSelect} />
+                  </motion.div>
+                )}
               </div>
             </motion.div>
 
-            {/* ── Feature Strip ── */}
+            {/* ── Status Strip ── */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: reduceMotion ? 0 : 1.2, duration: reduceMotion ? 0 : 0.8 }}
-              className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[12px] text-white/25"
+              transition={{ delay: reduceMotion ? 0 : 1.0, duration: reduceMotion ? 0 : 0.8 }}
+              className="mt-10"
             >
-              <span className="flex items-center gap-1.5">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400/50" />
-                AI-Powered Engine
-              </span>
-              <span className="hidden sm:inline text-white/10">·</span>
-              <span>No coding required</span>
-              <span className="hidden sm:inline text-white/10">·</span>
-              <span className="flex items-center gap-1">
-                <span className="text-accent/60">⚡</span> Deploys in seconds
-              </span>
+              <StatusStrip activeStage={3} />
+              <div className="mt-5">
+                <SocialProofStrip />
+              </div>
             </motion.div>
-
           </div>
         </motion.div>
       </section>
 
       {/* Sign-in Modal for unauthenticated anonymous attempts */}
-      <LoginModal 
-        isOpen={showAuthModal} 
-        onClose={() => setShowAuthModal(false)} 
-        nextUrl={`/dashboard/chat/new?prompt=${encodeURIComponent(prompt)}`} 
+      <LoginModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        nextUrl={`/dashboard/chat/new?prompt=${encodeURIComponent(prompt)}`}
       />
 
-      {/* ── How It Works — only for public visitors ── */}
+      {/* ══ Below-the-fold sections — only for public visitors ══ */}
       {!user && (
         <div className="relative overflow-hidden pt-12">
-          {/* Ambient light for the lower section */}
+          {/* Ambient light */}
           <div className="pointer-events-none absolute left-[-12%] top-24 h-72 w-72 rounded-full bg-accent/[0.06] blur-[120px]" />
           <div className="pointer-events-none absolute right-[-10%] top-[28rem] h-80 w-80 rounded-full bg-white/[0.03] blur-[140px]" />
           <div className="pointer-events-none absolute bottom-[-8rem] left-1/2 h-96 w-[42rem] -translate-x-1/2 rounded-full bg-accent/[0.04] blur-[160px]" />
-          {/* How it works */}
+
+          {/* ═══ SECTION 1: From Intent to Deployment ═══ */}
           <section className="relative py-28 overflow-hidden">
-            {/* Background */}
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-[#09090b]/35 to-transparent" />
             <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 h-px w-[60%] bg-gradient-to-r from-transparent via-accent/15 to-transparent" />
 
             <div className="relative mx-auto max-w-6xl px-6 lg:px-8">
-              {/* Section header */}
               <div className="mb-20 text-center">
                 <span className="inline-flex items-center gap-2 rounded-full border border-accent/15 bg-accent/[0.06] px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.24em] text-accent">
                   How It Works
                 </span>
                 <h2 className="mt-5 text-4xl font-semibold tracking-[-0.04em] text-white sm:text-5xl">
-                  From idea to running automation<br className="hidden sm:block" /> in three steps
+                  From a sentence to<br className="hidden sm:block" /> a running workflow
                 </h2>
                 <p className="mt-4 text-[1rem] leading-7 text-white/35 max-w-xl mx-auto">
-                  No code. No complex setup. Just describe what you need and AI handles the rest.
+                  Three steps. Every time.
                 </p>
               </div>
 
-              {/* Steps */}
+              {/* Pipeline steps */}
               <div className="grid gap-6 md:grid-cols-3">
-                {[
-                  {
-                    step: "01",
-                    icon: (
-                      <MessageSquareText className="h-6 w-6" />
-                    ),
-                    title: "Describe your workflow",
-                    desc: "Type what you want in plain English. \"Send a WhatsApp to new leads\" or \"Save form responses to Google Sheets\".",
-                    color: "from-accent/15 to-accent/[0.04]",
-                    ring: "ring-accent/15",
-                    glow: "rgba(59,130,246,0.12)",
-                  },
-                  {
-                    step: "02",
-                    icon: (
-                      <Sparkles className="h-6 w-6" />
-                    ),
-                    title: "AI builds the blueprint",
-                    desc: "Our AI maps out the workflow steps, selects the right integrations, and generates a setup form tailored to your needs.",
-                    color: "from-violet-500/15 to-violet-500/[0.04]",
-                    ring: "ring-violet-500/15",
-                    glow: "rgba(139,92,246,0.1)",
-                  },
-                  {
-                    step: "03",
-                    icon: (
-                      <Play className="h-6 w-6" />
-                    ),
-                    title: "Connect, configure & deploy",
-                    desc: "Link your apps with one click, fill in your details, and activate. Your automation runs 24/7 from that moment.",
-                    color: "from-emerald-500/15 to-emerald-500/[0.04]",
-                    ring: "ring-emerald-500/15",
-                    glow: "rgba(52,211,153,0.1)",
-                  },
-                ].map((item, i) => (
+                {pipelineSteps.map((item, i) => (
                   <motion.div
                     key={item.step}
                     initial={{ opacity: 0, y: reduceMotion ? 0 : 24 }}
@@ -522,33 +333,33 @@ export default function HeroSection({
                       delay: reduceMotion ? 0 : i * 0.12,
                       ease: [0.22, 1, 0.36, 1],
                     }}
-                    className="group relative overflow-hidden rounded-[2rem] border border-white/[0.06] bg-gradient-to-b from-[#111113] to-[#0d0d0f] p-8 transition-all duration-300 hover:border-white/[0.1] hover:shadow-[0_20px_48px_rgba(0,0,0,0.6)] hover:-translate-y-1"
-                    style={{ boxShadow: `0 0 60px ${item.glow}, 0 8px 32px rgba(0,0,0,0.4)` }}
+                    className="group relative overflow-hidden rounded-[2rem] border border-white/[0.06] bg-gradient-to-b from-[#111113] to-[#0d0d0f] p-8 transition-all duration-300 hover:border-white/[0.1] hover:shadow-[0_20px_48px_rgba(0,0,0,0.6)]"
                   >
                     {/* Step number */}
                     <p className="mb-6 font-mono text-[11px] font-bold tracking-[0.3em] text-white/15">
                       {item.step}
                     </p>
 
-                    {/* Icon */}
-                    <div
-                      className={`mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br ${item.color} ring-1 ${item.ring} text-white/70 transition-colors group-hover:text-white`}
-                    >
-                      {item.icon}
-                    </div>
-
                     <h3 className="text-xl font-semibold tracking-[-0.02em] text-white">
                       {item.title}
                     </h3>
-                    <p className="mt-3 text-[0.92rem] leading-7 text-white/35">
+                    <p className="mt-3 text-[14px] leading-7 text-white/35">
                       {item.desc}
                     </p>
 
-                    {/* Connector arrow (hidden on last) */}
+                    {/* Status indicator */}
+                    <div className="mt-5 flex items-center gap-2">
+                      <div className={`h-1.5 w-1.5 rounded-full ${item.dotColor}`} />
+                      <span className={`text-[11px] font-semibold ${item.statusColor}`}>
+                        {item.status}
+                      </span>
+                    </div>
+
+                    {/* Connector */}
                     {i < 2 && (
                       <div className="hidden md:block absolute -right-3 top-1/2 -translate-y-1/2 z-10">
                         <div className="flex h-6 w-6 items-center justify-center rounded-full border border-white/[0.06] bg-[#0d0d0f]">
-                          <ChevronRight className="h-3 w-3 text-white/20" />
+                          <ArrowRight className="h-3 w-3 text-white/20" />
                         </div>
                       </div>
                     )}
@@ -560,9 +371,9 @@ export default function HeroSection({
               <div className="mt-14 text-center">
                 <Link
                   href="/signup"
-                  className="cta-glow inline-flex h-13 items-center gap-2.5 rounded-full bg-gradient-to-r from-accent to-blue-600 px-8 py-3.5 text-[0.95rem] font-semibold text-white shadow-[0_4px_24px_rgba(59,130,246,0.3)] transition-all duration-200 hover:shadow-[0_8px_32px_rgba(59,130,246,0.4)] hover:translate-y-[-2px]"
+                  className="cta-glow inline-flex h-13 items-center gap-2.5 rounded-full bg-gradient-to-r from-accent to-blue-600 px-8 py-3.5 text-[15px] font-semibold text-white shadow-[0_4px_24px_rgba(59,130,246,0.3)] transition-all duration-200 hover:shadow-[0_8px_32px_rgba(59,130,246,0.4)] hover:translate-y-[-2px]"
                 >
-                  Start for free — no credit card
+                  Start building for free
                   <ArrowRight className="h-4 w-4" />
                 </Link>
                 <p className="mt-4 text-[12px] text-white/20">10 free credits on signup · No card required</p>
@@ -570,79 +381,53 @@ export default function HeroSection({
             </div>
           </section>
 
+          {/* ═══ SECTION 2: Connector Intelligence ═══ */}
+          <ConnectorIntelligence />
 
+          {/* ═══ SECTION 3: Runtime Trust ═══ */}
+          <TrustProof />
 
-          {/* Platform capabilities */}
-          <section className="relative py-12 overflow-hidden">
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-[#09090b]/25 to-transparent" />
+          {/* ═══ SECTION 4: Infrastructure Trust (replaces fake testimonials) ═══ */}
+          <TrustEngine />
+
+          {/* ═══ SECTION 5: Integration Logo Strip (verified tools) ═══ */}
+          <IntegrationLogoStrip />
+
+          {/* ═══ Testimonials — renders null until real quotes exist ═══ */}
+          <Testimonials />
+
+          {/* ═══ SECTION 5: Final CTA ═══ */}
+          <section className="relative py-28 overflow-hidden">
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-[#09090b]/40 to-transparent" />
             <div className="relative mx-auto max-w-6xl px-6 lg:px-8">
-              <div className="grid grid-cols-3 gap-4 md:gap-8">
-                {[
-                  { value: "60+", label: "Integrations supported" },
-                  { value: "<3 min", label: "Average build time" },
-                  { value: "24/7", label: "Always-on execution" },
-                ].map((stat) => (
-                  <motion.div
-                    key={stat.label}
-                    initial={{ opacity: 0, y: reduceMotion ? 0 : 16 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: reduceMotion ? 0 : 0.55, ease: [0.22, 1, 0.36, 1] }}
-                    className="flex flex-col items-center gap-1 text-center"
+              <motion.div
+                initial={{ opacity: 0, y: reduceMotion ? 0 : 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: reduceMotion ? 0 : 0.5, ease: [0.22, 1, 0.36, 1] }}
+                className="mx-auto max-w-2xl text-center"
+              >
+                <h2 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                  Your first automation<br />takes 90 seconds.
+                </h2>
+                <p className="mt-4 text-[15px] leading-7 text-white/35">
+                  Describe, review, and deploy — all in one platform. Powered by n8n.
+                </p>
+                <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+                  <Link
+                    href="/signup"
+                    className="cta-glow inline-flex h-12 items-center gap-2 rounded-full bg-accent px-8 text-[15px] font-semibold text-white shadow-[0_4px_24px_rgba(59,130,246,0.25)] transition-all hover:shadow-[0_8px_32px_rgba(59,130,246,0.35)] hover:-translate-y-0.5"
                   >
-                    <span className="font-mono text-3xl font-bold tracking-tight text-white sm:text-4xl">
-                      {stat.value}
-                    </span>
-                    <span className="text-[11px] font-bold uppercase tracking-[0.22em] text-white/25">
-                      {stat.label}
-                    </span>
-                  </motion.div>
-                ))}
-              </div>
-              <div className="mt-8 h-px w-full bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
-            </div>
-          </section>
-
-          {/* Integration logos marquee */}
-          <section className="relative py-16 overflow-hidden">
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-[#08080a]/55 to-[#060608]/75" />
-            <div className="pointer-events-none absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/[0.05] to-transparent" />
-            <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/[0.05] to-transparent" />
-
-            <div className="relative mx-auto max-w-6xl px-6 lg:px-8">
-              <p className="mb-10 text-center text-[11px] font-bold uppercase tracking-[0.28em] text-white/20">
-                Works with your favourite tools
-              </p>
-
-              {/* Marquee container with edge fades */}
-              <div className="relative overflow-hidden">
-                <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-16 z-10 bg-gradient-to-r from-[#09090b] to-transparent" />
-                <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-16 z-10 bg-gradient-to-l from-[#09090b] to-transparent" />
-
-                <div className="marquee-track">
-                  {[0, 1].map((setIdx) => (
-                    <div key={setIdx} className="flex items-center gap-10 px-5 shrink-0">
-                      {[
-                        { name: "WhatsApp", color: "#25D366", path: "M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" },
-                        { name: "Gmail", color: "#EA4335", path: "M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 0 1 0 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L12 9.548l8.073-6.055C21.69 2.28 24 3.434 24 5.457z" },
-                        { name: "Google Sheets", color: "#34A853", path: "M19.5 7H15V1.5l.5-.5H6a1 1 0 0 0-1 1v20a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1V7.5l-.5-.5z" },
-                        { name: "Slack", color: "#E01E5A", path: "M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52z" },
-                        { name: "Notion", color: "#ffffff", path: "M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L18.06 2.2c-.42-.326-.98-.7-2.055-.607L3.01 2.669c-.467.047-.56.28-.374.467l1.823 1.072z" },
-                        { name: "HubSpot", color: "#FF7A59", path: "M18.164 7.93V5.084a2.198 2.198 0 0 0 1.267-1.978V3.08a2.2 2.2 0 0 0-2.199-2.199h-.026a2.2 2.2 0 0 0-2.199 2.199v.026a2.198 2.198 0 0 0 1.267 1.978V7.93a6.232 6.232 0 0 0-2.962 1.287L7.144 5.57a2.45 2.45 0 1 0-1.056 1.437l7.992 3.587a6.23 6.23 0 0 0-.828 3.094 6.24 6.24 0 0 0 .847 3.12L11.98 17.9a2.12 2.12 0 1 0 1.082 1.564l2.062-1.08a6.254 6.254 0 1 0 3.04-10.454z" },
-                        { name: "Stripe", color: "#635BFF", path: "M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-7.076-2.19l-.888 5.534C5.075 22.93 8.292 24 11.843 24c2.635 0 4.745-.665 6.213-1.878 1.636-1.344 2.354-3.297 2.354-5.627-.005-4.22-2.577-5.874-6.434-7.345z" },
-                        { name: "Discord", color: "#5865F2", path: "M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286z" },
-                        { name: "Calendly", color: "#006BFF", path: "M19.655 14.262c-.252 2.116-1.267 3.887-2.92 5.087-1.48 1.074-3.39 1.651-5.327 1.651-5.29 0-8.616-4.06-8.408-8.907.18-4.204 3.627-8.093 8.12-8.093 1.89 0 3.735.597 5.175 1.653 1.596 1.171 2.637 2.866 2.963 4.838" },
-                      ].map((item) => (
-                        <div key={`${setIdx}-${item.name}`} className="flex items-center gap-2 opacity-40 hover:opacity-100 transition-opacity duration-300 shrink-0">
-                          <svg className="h-5 w-5" viewBox="0 0 24 24" fill={item.color}><path d={item.path} /></svg>
-                          <span className="text-[13px] font-semibold text-white/70 whitespace-nowrap">{item.name}</span>
-                        </div>
-                      ))}
-                      <span className="text-[13px] text-white/20 font-medium whitespace-nowrap shrink-0">+ 50 more</span>
-                    </div>
-                  ))}
+                    Start automating for free <ArrowRight className="h-4 w-4" />
+                  </Link>
+                  <Link
+                    href="/why-us"
+                    className="inline-flex h-12 items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.02] px-8 text-[15px] font-medium text-white/60 transition-all hover:bg-white/[0.05] hover:text-white"
+                  >
+                    Explore real workflows
+                  </Link>
                 </div>
-              </div>
+              </motion.div>
             </div>
           </section>
         </div>

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import AppChrome from "@/components/AppChrome";
 import { SupabaseProvider } from "@/components/providers/SupabaseProvider";
@@ -11,30 +10,30 @@ import { RuntimeDebugProbe } from "@/components/RuntimeDebugProbe";
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["300", "400", "500", "600", "700", "800"],
   display: "swap",
 });
 
 export const metadata: Metadata = {
   title: {
-    default: "AutomateCraft — AI-Powered Business Automation",
+    default: "AutomateCraft — Workflow Intelligence Platform",
     template: "%s | AutomateCraft",
   },
   description:
-    "Build AI automations for your business in minutes. Describe workflows in plain English, connect your apps, and deploy — no code required.",
+    "Describe workflows in plain English. Review automation blueprints. Deploy to n8n with confidence. No code required.",
   metadataBase: new URL("https://automatecraft.ai"),
   openGraph: {
     type: "website",
     siteName: "AutomateCraft",
-    title: "AutomateCraft — AI-Powered Business Automation",
+    title: "AutomateCraft — Automation Infrastructure for Modern Teams",
     description:
-      "Build AI automations for your business in minutes. No code required.",
+      "Tell us what to automate. We'll build it, test it, and deploy it. Powered by n8n.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "AutomateCraft — AI-Powered Business Automation",
+    title: "AutomateCraft — Automation Infrastructure for Modern Teams",
     description:
-      "Build AI automations for your business in minutes. No code required.",
+      "Describe workflows in plain English. Review every step. Deploy to n8n with confidence.",
   },
 };
 
@@ -43,6 +42,10 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const showRuntimeDebugProbe =
+    process.env.NODE_ENV === "development" &&
+    process.env.NEXT_PUBLIC_ENABLE_RUNTIME_DEBUG === "true";
+
   return (
     <html
       lang="en"
@@ -54,8 +57,8 @@ export default function RootLayout({
         </a>
         <SupabaseProvider>
           <CreditsProvider>
-            {process.env.NODE_ENV === "development" && <RuntimeDebugProbe />}
-            <AppChrome navbar={<Navbar />} footer={<Footer />}>
+            {showRuntimeDebugProbe ? <RuntimeDebugProbe /> : null}
+            <AppChrome navbar={null} footer={<Footer />}>
               {children}
             </AppChrome>
           </CreditsProvider>

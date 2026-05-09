@@ -85,7 +85,7 @@ export default function HeroScene({ isPromptFocused = false }: HeroSceneProps) {
 
     const balls: FloatingBall[] = [];
     // Increase density: 50 to 100 balls for a fuller aesthetic look
-    const NUM_BALLS = Math.min(Math.max(Math.floor(width / 20), 50), 100);
+    const NUM_BALLS = Math.min(Math.max(Math.floor(width / 30), 25), 50);
 
     for (let i = 0; i < NUM_BALLS; i++) {
       balls.push(new FloatingBall(i, width, height));

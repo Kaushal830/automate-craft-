@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import type { AuthenticatedUser } from "@/lib/automation";
 import { env, isOpenAccessMode, isSupabaseAuthEnabled, isSupabaseMode } from "@/lib/env";
 import { getGuestUser } from "@/lib/guest-access";
@@ -27,6 +28,12 @@ type LocalSessionPayload = {
 
 function getSessionSecret() {
   return new TextEncoder().encode(env.sessionSecret);
+}
+
+function hasSupabaseAuthCookie(cookieStore: Awaited<ReturnType<typeof cookies>>) {
+  return cookieStore.getAll().some(({ name }) => (
+    name.startsWith("sb-") && name.includes("-auth-token")
+  ));
 }
 
 function mapSupabaseUser(
@@ -232,17 +239,18 @@ export async function syncSupabaseProfileFromCurrentSession() {
   };
 }
 
-export async function getCurrentUser(
-  options: { allowUnverified?: boolean } = {},
-): Promise<AuthenticatedUser | null> {
-  const { allowUnverified = false } = options;
+const getCurrentUserRaw = cache(async (): Promise<AuthenticatedUser | null> => {
+  log.debug("Resolving current user.");
+  const cookieStore = await cookies();
+  const hasLocalSessionCookie = Boolean(cookieStore.get(LOCAL_SESSION_COOKIE)?.value);
+  const hasSupabaseSessionCookie = hasSupabaseAuthCookie(cookieStore);
 
   // Open-access shortcut: skip all auth checks and return guest immediately.
   if (isOpenAccessMode()) {
     // Still try to load a real session so logged-in users get their own data,
     // but never crash or block if it fails.
     try {
-      if (isSupabaseAuthEnabled()) {
+      if (isSupabaseAuthEnabled() && hasSupabaseSessionCookie) {
         const supabase = await createSupabaseServerComponentClient();
         const { data, error } = await supabase.auth.getUser();
         if (!error && data.user) {
@@ -258,11 +266,14 @@ export async function getCurrentUser(
             name,
             mode: "supabase",
             onboarded: !!data.user.user_metadata?.onboarded,
+            emailVerified: Boolean(data.user.email_confirmed_at),
           };
         }
       }
-      const localUser = await getLocalUserFromCookie();
-      if (localUser) return localUser;
+      if (hasLocalSessionCookie) {
+        const localUser = await getLocalUserFromCookie();
+        if (localUser) return localUser;
+      }
     } catch (err) {
       log.warn("Auth check failed in open-access mode, using guest.", err);
     }
@@ -271,6 +282,11 @@ export async function getCurrentUser(
 
   // Standard auth flow (open-access OFF)
   if (isSupabaseAuthEnabled()) {
+    if (!hasSupabaseSessionCookie) {
+      log.debug("Supabase auth is enabled, but no auth cookie exists.");
+      return null;
+    }
+
     log.debug("Loading current user in Supabase auth mode.");
     const supabase = await createSupabaseServerComponentClient();
     const { data, error } = await supabase.auth.getUser();
@@ -281,17 +297,34 @@ export async function getCurrentUser(
     }
 
     const currentUser = mapSupabaseUser(data.user);
-
-    if (!allowUnverified && !currentUser.emailVerified) {
-      log.info("Supabase user exists, but email is not verified.");
-      return null;
-    }
-
     return currentUser;
+  }
+
+  if (!hasLocalSessionCookie) {
+    log.debug("Local auth mode has no session cookie.");
+    return null;
   }
 
   log.debug("Loading current user in local mode.");
   return getLocalUserFromCookie();
+});
+
+export async function getCurrentUser(
+  options: { allowUnverified?: boolean } = {},
+): Promise<AuthenticatedUser | null> {
+  const { allowUnverified = false } = options;
+  const currentUser = await getCurrentUserRaw();
+
+  if (!currentUser) {
+    return null;
+  }
+
+  if (!allowUnverified && currentUser.emailVerified === false) {
+    log.info("Supabase user exists, but email is not verified.");
+    return null;
+  }
+
+  return currentUser;
 }
 
 export async function requireUser({ requireOnboarding = true }: { requireOnboarding?: boolean } = {}) {

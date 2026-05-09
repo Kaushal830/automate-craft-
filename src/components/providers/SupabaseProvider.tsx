@@ -22,6 +22,7 @@ status stays in sync across server and client components.
 */
 
 const SupabaseContext = createContext<SupabaseClient | null>(null);
+const DEBUG_ENABLED = process.env.NEXT_PUBLIC_ENABLE_RUNTIME_DEBUG === "true";
 const DEBUG_ENDPOINT = "http://127.0.0.1:7855/ingest/35f1ca99-d0a5-471f-8d2e-699878613661";
 const DEBUG_SESSION_ID = "76d521";
 
@@ -32,6 +33,10 @@ function postDebugLog(payload: {
   message: string;
   data: Record<string, unknown>;
 }) {
+  if (!DEBUG_ENABLED) {
+    return;
+  }
+
   // #region agent log
   fetch(DEBUG_ENDPOINT, {
     method: "POST",
@@ -72,13 +77,17 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
 
     const {
       data: { subscription },
-    } = client.auth.onAuthStateChange(() => {
+    } = client.auth.onAuthStateChange((event) => {
+      if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") {
+        return;
+      }
+
       postDebugLog({
         runId: "baseline",
         hypothesisId: "H1",
         location: "src/components/providers/SupabaseProvider.tsx:76",
         message: "Supabase auth state changed",
-        data: {},
+        data: { event },
       });
       router.refresh();
     });

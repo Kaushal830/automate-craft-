@@ -3,9 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useEffectEvent, useState } from "react";
-import { Menu, X } from "lucide-react";
-import { motion, useReducedMotion } from "framer-motion";
+import { Menu, X, ChevronDown } from "lucide-react";
+import { motion, useReducedMotion, AnimatePresence } from "framer-motion";
 import BrandMark from "@/components/BrandMark";
+import NavDropdown from "@/components/nav/NavDropdown";
+import ProductMenu from "@/components/nav/ProductMenu";
+import SolutionsMenu from "@/components/nav/SolutionsMenu";
 
 /* LOGIC EXPLAINED:
 The navbar already had a polished entrance animation, but it ignored reduced-motion
@@ -13,9 +16,26 @@ preferences. This fix keeps the same visual behavior for most users, while makin
 the animation instant for users who prefer less movement.
 */
 
-const navigation = [
+const flatLinks = [
   { label: "Pricing", href: "/pricing" },
-  { label: "Why Us", href: "/why-us" },
+  { label: "Changelog", href: "/changelog" },
+  { label: "Docs", href: "/docs" },
+];
+
+/* Mobile sub-links for accordion sections */
+const mobileProductLinks = [
+  { label: "How It Works", href: "/why-us" },
+  { label: "Integrations", href: "/integrations" },
+  { label: "Templates", href: "/templates" },
+  { label: "Status", href: "/status" },
+  { label: "Blog", href: "/blog" },
+];
+
+const mobileSolutionsLinks = [
+  { label: "For Startups", href: "/solutions/startups" },
+  { label: "For Operations", href: "/solutions/operations" },
+  { label: "For Agencies", href: "/solutions/agencies" },
+  { label: "For Support", href: "/solutions/support" },
 ];
 
 export default function NavbarClient({
@@ -27,6 +47,7 @@ export default function NavbarClient({
   const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  const [mobileAccordion, setMobileAccordion] = useState<string | null>(null);
 
   const handleScroll = useEffectEvent(() => {
     setScrolled(window.scrollY > 18);
@@ -49,6 +70,10 @@ export default function NavbarClient({
     return null;
   }
 
+  const toggleMobileAccordion = (section: string) => {
+    setMobileAccordion((prev) => (prev === section ? null : section));
+  };
+
   return (
     <motion.nav
       initial={{ opacity: 0, y: reduceMotion ? 0 : -16 }}
@@ -70,8 +95,28 @@ export default function NavbarClient({
         <div className="flex items-center justify-between px-4 py-2 md:px-5">
           <BrandMark compact showName />
 
-          <div className="hidden items-center gap-7 text-[0.95rem] font-medium text-foreground/70 lg:flex">
-            {navigation.map((item) => (
+          {/* ─── Desktop Nav ─── */}
+          <div className="hidden items-center gap-7 text-[15px] font-medium text-foreground/70 lg:flex">
+            {/* Product Dropdown */}
+            <NavDropdown
+              label="Product"
+              pathname={pathname}
+              activePaths={["/why-us", "/integrations", "/templates", "/status", "/blog"]}
+            >
+              <ProductMenu />
+            </NavDropdown>
+
+            {/* Solutions Dropdown */}
+            <NavDropdown
+              label="Solutions"
+              pathname={pathname}
+              activePaths={["/solutions"]}
+            >
+              <SolutionsMenu />
+            </NavDropdown>
+
+            {/* Flat links */}
+            {flatLinks.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -87,6 +132,7 @@ export default function NavbarClient({
             ))}
           </div>
 
+          {/* ─── Auth buttons (desktop) ─── */}
           <div className="hidden items-center gap-4 lg:flex">
             {isAuthenticated ? (
               <Link
@@ -113,6 +159,7 @@ export default function NavbarClient({
             )}
           </div>
 
+          {/* ─── Mobile hamburger ─── */}
           <button
             type="button"
             onClick={() => setOpen((current) => !current)}
@@ -128,10 +175,84 @@ export default function NavbarClient({
           <div className="h-px w-full bg-gradient-to-r from-transparent via-accent/20 to-transparent" />
         )}
 
+        {/* ─── Mobile Menu with Accordion ─── */}
         {open ? (
           <div className="border-t border-white/8 px-4 pb-4 pt-3 lg:hidden">
-            <div className="space-y-2">
-              {navigation.map((item) => (
+            <div className="space-y-1">
+              {/* Product accordion */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => toggleMobileAccordion("product")}
+                  className="flex w-full items-center justify-between rounded-xl px-4 py-2.5 text-sm font-medium text-foreground/70 hover:bg-white/5 hover:text-foreground transition-colors"
+                >
+                  Product
+                  <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${mobileAccordion === "product" ? "rotate-180" : ""}`} />
+                </button>
+                <AnimatePresence>
+                  {mobileAccordion === "product" && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: reduceMotion ? 0 : 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="space-y-0.5 pb-2 pl-4">
+                        {mobileProductLinks.map((link) => (
+                          <Link
+                            key={link.href}
+                            href={link.href}
+                            onClick={() => setOpen(false)}
+                            className="block rounded-lg px-4 py-2 text-[13px] text-foreground/50 hover:bg-white/5 hover:text-foreground/80 transition-colors"
+                          >
+                            {link.label}
+                          </Link>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Solutions accordion */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() => toggleMobileAccordion("solutions")}
+                  className="flex w-full items-center justify-between rounded-xl px-4 py-2.5 text-sm font-medium text-foreground/70 hover:bg-white/5 hover:text-foreground transition-colors"
+                >
+                  Solutions
+                  <ChevronDown className={`h-4 w-4 transition-transform duration-200 ${mobileAccordion === "solutions" ? "rotate-180" : ""}`} />
+                </button>
+                <AnimatePresence>
+                  {mobileAccordion === "solutions" && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: reduceMotion ? 0 : 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="space-y-0.5 pb-2 pl-4">
+                        {mobileSolutionsLinks.map((link) => (
+                          <Link
+                            key={link.href}
+                            href={link.href}
+                            onClick={() => setOpen(false)}
+                            className="block rounded-lg px-4 py-2 text-[13px] text-foreground/50 hover:bg-white/5 hover:text-foreground/80 transition-colors"
+                          >
+                            {link.label}
+                          </Link>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {/* Flat links */}
+              {flatLinks.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}
@@ -145,6 +266,7 @@ export default function NavbarClient({
               ))}
             </div>
 
+            {/* Auth buttons */}
             <div className="mt-4 flex flex-col gap-3">
               {isAuthenticated ? (
                 <Link

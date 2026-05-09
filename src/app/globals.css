@@ -7,6 +7,8 @@
   --color-accent: #3b82f6;
   --color-accent-hover: #4a8cf7;
   --color-accent-glow: rgba(59, 130, 246, 0.35);
+  --color-accent-2: #8b5cf6;
+  --color-accent-2-glow: rgba(139, 92, 246, 0.30);
   --color-muted: #666666;
   --color-border-soft: rgba(255, 255, 255, 0.06);
   --color-border-hover: rgba(255, 255, 255, 0.12);
@@ -21,7 +23,28 @@
   --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-gentle: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-enter: cubic-bezier(0.0, 0.0, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0.0, 1, 1);
+  --ease-move: cubic-bezier(0.4, 0.0, 0.2, 1);
   --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+
+  /* ── Typographic Scale (8 sizes) ── */
+  --text-2xs: 0.625rem;   /* 10px */
+  --text-xs: 0.6875rem;   /* 11px */
+  --text-sm: 0.8125rem;   /* 13px */
+  --text-base: 0.9375rem; /* 15px */
+  --text-lg: 1.0625rem;   /* 17px */
+  --text-xl: 1.25rem;     /* 20px */
+  --text-2xl: 1.75rem;    /* 28px */
+  --text-3xl: 2.5rem;     /* 40px */
+  --text-4xl: 3.5rem;     /* 56px */
+
+  /* ── Opacity Tiers (standardized) ── */
+  --opacity-primary: 0.90;
+  --opacity-secondary: 0.60;
+  --opacity-muted: 0.35;
+  --opacity-ghost: 0.15;
 
   /* Build Page Design System */
   --build-bg: #0a0a0f;
@@ -58,6 +81,61 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* ── Noise Texture Overlay — organic depth for flat backgrounds ── */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.018;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+  mix-blend-mode: overlay;
+}
+
+/* ═══════════════════════════════════════════
+   ELEVATION SYSTEM — 5-level depth hierarchy
+   ═══════════════════════════════════════════ */
+.elevation-0 {
+  box-shadow: none;
+  border: 1px solid transparent;
+}
+
+.elevation-1 {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 1px 0 rgba(255, 255, 255, 0.02) inset;
+  border: 1px solid var(--color-border-soft);
+}
+
+.elevation-2 {
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.4),
+    0 1px 0 rgba(255, 255, 255, 0.03) inset;
+  border: 1px solid var(--color-border-soft);
+}
+
+.elevation-3 {
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.5),
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  border: 1px solid var(--color-border-hover);
+}
+
+.elevation-4 {
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.6),
+    0 8px 24px rgba(0, 0, 0, 0.4),
+    0 1px 0 rgba(255, 255, 255, 0.05) inset;
+  border: 1px solid var(--color-border-hover);
+}
+
+.elevation-1:hover { box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 255, 255, 0.03) inset; }
+.elevation-2:hover { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.04) inset; transform: translateY(-1px); }
 
 a {
   text-decoration: none;
@@ -108,13 +186,10 @@ input, select, textarea {
   filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.35));
 }
 
-/* S4 — CTA button glow pulse on hover */
-@keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 4px 16px rgba(59, 130, 246, 0.25); }
-  50% { box-shadow: 0 8px 28px rgba(59, 130, 246, 0.4); }
-}
+/* S4 — CTA button glow on hover (single transition, not infinite pulse) */
 .cta-glow:hover {
-  animation: glow-pulse 2s ease-in-out infinite;
+  box-shadow: 0 8px 32px rgba(59, 130, 246, 0.4);
+  transition: box-shadow 0.3s ease;
 }
 
 /* S3 — Footer link hover indent */
@@ -239,21 +314,38 @@ shadow so only the intended prompt-box chrome is visible.
   overflow: hidden;
   background: rgba(17, 17, 19, 0.65);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(20px) saturate(130%);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
   box-shadow:
-    0 1px 0 0 rgba(255, 255, 255, 0.03) inset,
+    0 1px 0 0 rgba(255, 255, 255, 0.04) inset,
+    0 -1px 0 0 rgba(255, 255, 255, 0.02) inset,
     0 10px 30px rgba(0, 0, 0, 0.6);
   transition:
-    transform 300ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 300ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 300ms var(--ease-smooth),
+    box-shadow 300ms var(--ease-smooth),
     border-color 300ms ease;
+}
+
+/* Inner highlight line for premium glass effect */
+.card-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 40%, transparent 60%, rgba(255,255,255,0.02) 100%);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  pointer-events: none;
 }
 
 .card-glass:hover {
   transform: translateY(-2px);
   border-color: var(--color-border-hover);
   box-shadow:
-    0 1px 0 0 rgba(255, 255, 255, 0.04) inset,
+    0 1px 0 0 rgba(255, 255, 255, 0.05) inset,
+    0 -1px 0 0 rgba(255, 255, 255, 0.03) inset,
     0 16px 40px rgba(0, 0, 0, 0.7);
 }
 
@@ -361,72 +453,8 @@ That keeps the UI majorly black while making the workspace feel richer.
   backdrop-filter: blur(14px) saturate(120%);
 }
 
-.liquid-glass::before,
-.liquid-button::before {
-  content: "";
-  position: absolute;
-  inset: -24%;
-  pointer-events: none;
-  border-radius: inherit;
-}
-
-.liquid-glass::before {
-  background:
-    radial-gradient(circle at 28% 30%, rgba(255, 255, 255, 0.04), transparent 26%),
-    radial-gradient(circle at 72% 65%, rgba(59, 130, 246, 0.08), transparent 28%);
-  animation: liquid-drift 18s ease-in-out infinite;
-}
-
-.liquid-glass::after,
-.liquid-button::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-}
-
-/* Sheen sweep restricted to prompt boxes via .prompt-sheen */
-.liquid-glass::after {
-  /* No sweep by default — keeps glass cards clean */
-}
-
-.prompt-sheen::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  background: linear-gradient(
-    115deg,
-    transparent 20%,
-    rgba(255, 255, 255, 0.3) 46%,
-    transparent 66%
-  );
-  opacity: 0.2;
-  transform: translateX(-140%);
-  animation: liquid-sheen 18s linear infinite;
-}
-
-.liquid-button::before {
-  background:
-    radial-gradient(circle at 24% 28%, rgba(255, 255, 255, 0.14), transparent 22%),
-    radial-gradient(circle at 76% 72%, rgba(59, 130, 246, 0.12), transparent 24%);
-  animation: liquid-drift 11s ease-in-out infinite;
-}
-
-.liquid-button::after {
-  background: linear-gradient(
-    112deg,
-    transparent 10%,
-    rgba(255, 255, 255, 0.12) 44%,
-    transparent 68%
-  );
-  opacity: 0.5;
-  transform: translateX(-140%);
-  animation: liquid-sheen 12s linear infinite;
-}
-
+/* Liquid-glass pseudo-element animations removed (template aesthetic).
+   Base .liquid-glass styles above are retained for chat components. */
 .liquid-glass > *,
 .liquid-button > * {
   position: relative;
@@ -465,12 +493,12 @@ That keeps the UI majorly black while making the workspace feel richer.
 }
 
 /* ═══════════════════════════════════════════
-   TYPOGRAPHY — 3-tier visual hierarchy
+   TYPOGRAPHY — 4-tier visual hierarchy
    ═══════════════════════════════════════════ */
 .eyebrow {
   color: var(--color-accent);
-  font-size: 0.72rem;
-  font-weight: 600;
+  font-size: var(--text-xs);
+  font-weight: 700;
   letter-spacing: 0.24em;
   text-transform: uppercase;
 }
@@ -479,23 +507,28 @@ That keeps the UI majorly black while making the workspace feel richer.
   color: var(--color-foreground);
   font-size: clamp(2.45rem, 5vw, 3.4rem);
   font-weight: 600;
-  letter-spacing: -0.06em;
+  letter-spacing: -0.04em;
   line-height: 0.96;
 }
 
 /* Tier 1: Primary — bright white, high contrast */
 .text-primary-tier {
-  color: rgba(255, 255, 255, 0.95);
+  color: rgba(255, 255, 255, var(--opacity-primary));
 }
 
 /* Tier 2: Secondary — soft gray */
 .text-secondary-tier {
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, var(--opacity-secondary));
 }
 
 /* Tier 3: Muted — low opacity, background info */
 .text-muted-tier {
-  color: rgba(255, 255, 255, 0.30);
+  color: rgba(255, 255, 255, var(--opacity-muted));
+}
+
+/* Tier 4: Ghost — barely visible hints */
+.text-ghost-tier {
+  color: rgba(255, 255, 255, var(--opacity-ghost));
 }
 
 .text-subtle {
@@ -701,24 +734,7 @@ That keeps the UI majorly black while making the workspace feel richer.
   }
 }
 
-@keyframes liquid-drift {
-  0%,
-  100% {
-    transform: translate3d(-1%, -2%, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(3%, 3%, 0) scale(1.04);
-  }
-}
-
-@keyframes liquid-sheen {
-  0% {
-    transform: translateX(-140%);
-  }
-  100% {
-    transform: translateX(140%);
-  }
-}
+/* @keyframes liquid-drift and liquid-sheen removed (template aesthetic) */
 
 @keyframes caret-blink {
   0%,
@@ -827,10 +843,6 @@ That keeps the UI majorly black while making the workspace feel richer.
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .liquid-glass::before,
-  .liquid-glass::after,
-  .liquid-button::before,
-  .liquid-button::after,
   .typewriter-caret,
   .animate-glow-pulse,
   .animate-border-glow,

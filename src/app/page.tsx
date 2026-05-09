@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { isSsoEnabled, isSupabaseAuthEnabled } from "@/lib/env";
 import DashboardShell from "@/components/dashboard/DashboardShell";
 import { isGuestUser } from "@/lib/guest-access";
+import Navbar from "@/components/Navbar";
 
 /**
  * Homepage
@@ -28,8 +29,9 @@ export default async function Home() {
   }
 
   return (
-    <main id="main-content" className="relative min-h-screen">
+    <div className="relative min-h-screen">
+      <Navbar />
       {content}
-    </main>
+    </div>
   );
 }
