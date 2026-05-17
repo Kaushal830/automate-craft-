@@ -1,94 +1,36 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
-import { ArrowUp, ChevronDown, CheckCircle2, Home, Star, PenLine, Paperclip, Mic, X, Sparkles, Copy, Check, Pencil, Zap, MessageSquarePlus, Workflow, Mail, FileSpreadsheet, PanelRight, Clock, Activity, Bot } from "lucide-react";
+import { ChevronDown, CheckCircle2, Home, Star, Sparkles, Pencil, PanelRight, X, ChevronsDown, HelpCircle } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import Image from "next/image";
-import { InteractiveCanvas, type FlowNode } from "./InteractiveCanvas";
-import { FormCard, type FieldDef, type FieldValue } from "./FormCard";
-import { ProgressCard } from "./ProgressCard";
-import { ReadyCard } from "./ReadyCard";
-import { EngineAnalysisCard } from "./EngineAnalysisCard";
-import { IntegrationCard, IntegrationCardSubmitted } from "./IntegrationCard";
-import { ThinkingIndicator } from "./ThinkingIndicator";
+import dynamic from "next/dynamic";
+import { useChatStore } from "@/store/chat-store";
+import type { FlowNode } from "./InteractiveCanvas";
+import type { ChatSequenceStep, WorkspaceState, Message } from "@/store/chat-store";
 import { SystemStatusBar, type SystemPhase } from "./SystemStatusBar";
 import { CommandPalette } from "./CommandPalette";
-import { useChatStore } from "@/store/chat-store";
-import type { 
-  FormDef, 
-  EngineCards, 
-  Message, 
-  ChatSequenceStep, 
-  WorkspaceState, 
-  ChatSession 
-} from "@/store/chat-store";
+import { useAutomationChat } from "@/hooks/useAutomationChat";
+import { Composer } from "./Composer";
+import { MessageList } from "./MessageList";
+import { EmptyState } from "./EmptyState";
 
-type StoredChat = Partial<ChatSession>;
+const InteractiveCanvas = dynamic(
+  () => import("./InteractiveCanvas").then((mod) => mod.InteractiveCanvas),
+  { ssr: false }
+);
 
-type SpeechRecognitionResultEventLike = {
-  results: {
-    [index: number]: {
-      0: {
-        transcript: string;
-      };
-    };
-  };
-};
-
-type SpeechRecognitionErrorEventLike = {
-  error?: string;
-};
-
-type SpeechRecognitionLike = {
-  continuous: boolean;
-  interimResults: boolean;
-  onresult: ((event: SpeechRecognitionResultEventLike) => void) | null;
-  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-};
-
-type SpeechRecognitionWindow = Window & {
-  SpeechRecognition?: new () => SpeechRecognitionLike;
-  webkitSpeechRecognition?: new () => SpeechRecognitionLike;
-};
+const helpTips = [
+  "Describe one workflow in plain English.",
+  "Press Enter to send. Use Shift + Enter for a new line.",
+  "Use Cmd/Ctrl + K for test, deploy, and preview actions.",
+  "Test the automation before deploying it.",
+];
 
 interface ChatContainerProps {
   chatId: string;
   initialPrompt?: string;
   ultraThinking?: boolean;
-}
-
-type ChatIndexEntry = {
-  chatId: string;
-  title: string;
-  updatedAt: string;
-  isStarred: boolean;
-};
-
-const CHAT_INDEX_KEY = "chat_index_v1";
-
-function readChatIndex(): ChatIndexEntry[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(CHAT_INDEX_KEY);
-    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
-    return Array.isArray(parsed) ? (parsed as ChatIndexEntry[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeChatIndex(next: ChatIndexEntry[]) {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(CHAT_INDEX_KEY, JSON.stringify(next));
-    window.dispatchEvent(new Event("chat-index-updated"));
-  } catch {
-    // ignore
-  }
 }
 
 const stopWords = ["the", "a", "an", "is", "for", "to", "when", "on", "and", "in", "it"];
@@ -117,357 +59,26 @@ function sanitizeCustomTitle(value: string) {
   return value.replace(/[^\w\s-]/g, "").replace(/\s+/g, " ").trim().slice(0, 40);
 }
 
-function formatRelativeTime(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 5) return "just now";
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ago`;
-}
-
-const SUGGESTION_CHIPS = [
-  { icon: Workflow, label: "Email Workflow", desc: "Automate my email follow-up workflow" },
-  { icon: FileSpreadsheet, label: "Sheets → CRM", desc: "Sync Google Sheets data to my CRM" },
-  { icon: Mail, label: "Form Alerts", desc: "Send alerts when a form is submitted" },
-  { icon: Zap, label: "WhatsApp Pipeline", desc: "Connect WhatsApp to my lead pipeline" },
-];
-
-/* ── AI Avatar component ── */
-function AiAvatar({ isActive = false }: { isActive?: boolean }) {
-  return (
-    <div className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-accent/20 to-accent/5 ring-1 ring-accent/10 shadow-[0_0_12px_rgba(59,130,246,0.08)]">
-      <Image
-        src="/logo-new.png"
-        alt="AI"
-        width={18}
-        height={18}
-        className="object-contain"
-        style={{ width: "auto", height: "auto" }}
-      />
-      {isActive && (
-        <motion.div
-          className="absolute -inset-0.5 rounded-lg border border-accent/25"
-          animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0, 0.4] }}
-          transition={{ duration: 2, repeat: Infinity }}
-        />
-      )}
-    </div>
-  );
-}
-
-/* ── Orbital Empty State Component ── */
-const OrbitalCore = () => (
-  <div className="relative flex h-24 w-24 items-center justify-center mb-6">
-    {/* Outer orbital rings */}
-    <motion.svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" animate={{ rotate: 360 }} transition={{ duration: 40, repeat: Infinity, ease: "linear" }}>
-      <circle cx="50" cy="50" r="48" fill="none" stroke="rgba(59,130,246,0.1)" strokeWidth="1" strokeDasharray="4 8" />
-      <circle cx="50" cy="50" r="48" fill="none" stroke="rgba(59,130,246,0.3)" strokeWidth="2" strokeDasharray="20 100" strokeLinecap="round" />
-    </motion.svg>
-    <motion.svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" animate={{ rotate: -360 }} transition={{ duration: 60, repeat: Infinity, ease: "linear" }}>
-      <circle cx="50" cy="50" r="38" fill="none" stroke="rgba(59,130,246,0.15)" strokeWidth="1" strokeDasharray="6 6" />
-      <circle cx="50" cy="50" r="38" fill="none" stroke="rgba(59,130,246,0.4)" strokeWidth="1.5" strokeDasharray="30 80" strokeLinecap="round" />
-    </motion.svg>
-    
-    {/* Center node */}
-    <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-accent/20 to-accent/5 ring-1 ring-accent/20 shadow-[0_0_30px_rgba(59,130,246,0.15)] backdrop-blur-sm">
-      <Image
-        src="/logo-new.png"
-        alt="AutomateCraft"
-        width={24}
-        height={24}
-        className="object-contain"
-        style={{ width: "auto", height: "auto" }}
-      />
-      <motion.div
-        className="absolute inset-0 rounded-2xl border border-accent/30"
-        animate={{ scale: [1, 1.2, 1], opacity: [0.5, 0, 0.5] }}
-        transition={{ duration: 3, repeat: Infinity }}
-      />
-    </div>
-  </div>
-);
-
-/* ── Recent Activity Panel ── */
-function RecentActivityPanel() {
-  const [recentChats, setRecentChats] = useState<ChatIndexEntry[]>([]);
-
-  useEffect(() => {
-    const entries = readChatIndex()
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-      .slice(0, 3);
-    setRecentChats(entries);
-  }, []);
-
-  if (recentChats.length === 0) return null;
-
-  const lastChat = recentChats[0];
-  const otherChats = recentChats.slice(1);
-
-  function timeAgo(dateStr: string) {
-    const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
-    if (seconds < 60) return "just now";
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    return `${days}d ago`;
-  }
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.35, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      className="relative z-10 w-full max-w-[420px] space-y-3"
-    >
-      {/* Divider */}
-      <div className="flex items-center gap-3">
-        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
-        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/15">Recent</span>
-        <div className="h-px flex-1 bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
-      </div>
-
-      {/* Last automation preview card */}
-      <a
-        href={`/dashboard/chat/${lastChat.chatId}`}
-        className="group flex items-center gap-3.5 rounded-xl border border-white/[0.06] bg-gradient-to-r from-white/[0.025] to-white/[0.01] px-4 py-3.5 transition-all duration-250 hover:border-accent/15 hover:bg-accent/[0.03] hover:shadow-[0_4px_20px_rgba(59,130,246,0.06)]"
-      >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/[0.06] ring-1 ring-accent/[0.08] group-hover:ring-accent/20 transition-all">
-          <Activity className="h-4 w-4 text-accent/50 group-hover:text-accent/80 transition-colors" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-[13px] font-semibold text-white/70 truncate group-hover:text-white/90 transition-colors">
-            {lastChat.title}
-          </p>
-          <p className="text-[11px] text-white/25 mt-0.5">
-            {timeAgo(lastChat.updatedAt)} {lastChat.isStarred ? "· ★" : ""}
-          </p>
-        </div>
-        <div className="shrink-0 flex items-center gap-1 rounded-md border border-white/[0.04] bg-white/[0.02] px-2 py-0.5">
-          <span className="text-[10px] font-medium text-white/25 group-hover:text-white/40 transition-colors">Open</span>
-        </div>
-      </a>
-
-      {/* Other recent items — compact list */}
-      {otherChats.length > 0 && (
-        <div className="space-y-1">
-          {otherChats.map((chat) => (
-            <a
-              key={chat.chatId}
-              href={`/dashboard/chat/${chat.chatId}`}
-              className="group flex items-center gap-2.5 rounded-lg px-3 py-2 transition-all duration-200 hover:bg-white/[0.03]"
-            >
-              <Clock className="h-3 w-3 text-white/12 shrink-0" />
-              <span className="text-[12px] text-white/30 truncate flex-1 group-hover:text-white/50 transition-colors">
-                {chat.title}
-              </span>
-              <span className="text-[10px] text-white/15 shrink-0">{timeAgo(chat.updatedAt)}</span>
-            </a>
-          ))}
-        </div>
-      )}
-    </motion.div>
-  );
-}
-
-function renderStructuredAiContent(content: string, isStreaming: boolean = false) {
-  if (!content) return null;
-  const lines = content.split("\n").map((line) => line.trim()).filter(Boolean);
-  
-  const isHeadingLine = lines[0]?.startsWith("**");
-  const headingMatch = lines[0]?.match(/^\*\*(.*?)(?:\*\*|$)/);
-  const heading = headingMatch ? headingMatch[1] : null;
-
-  const remaining = isHeadingLine ? lines.slice(1) : lines;
-  const bullets = remaining
-    .filter((line) => line.startsWith("- "))
-    .map((line) => line.replace(/^- /, ""));
-  const bodyLines = remaining.filter((line) => !line.startsWith("- "));
-  const summary = bodyLines[0] ?? "";
-  const details = bodyLines.slice(1);
-
-  const cursor = <span className="inline-block ml-1 w-1.5 h-[14px] bg-accent/80 animate-pulse align-middle shadow-[0_0_8px_rgba(59,130,246,0.6)] rounded-sm" />;
-
-  return (
-    <div className="space-y-2">
-      {heading && (
-        <p className="text-[14px] font-semibold text-white/85">
-          {heading}
-        </p>
-      )}
-      {heading && !summary && !details.length && !bullets.length && isStreaming && cursor}
-
-      {summary && (
-        <p className="text-[13px] leading-relaxed text-white/50">
-          {summary}
-          {!details.length && !bullets.length && isStreaming && cursor}
-        </p>
-      )}
-
-      {details.length > 0 && (
-        <div className="space-y-1 text-[13px] leading-relaxed text-white/45">
-          {details.map((line, index) => (
-            <p key={`${line}-${index}`}>
-              {line}
-              {index === details.length - 1 && !bullets.length && isStreaming && cursor}
-            </p>
-          ))}
-        </div>
-      )}
-
-      {bullets.length > 0 && (
-        <div className="space-y-1.5 mt-1">
-          {bullets.map((item, index) => (
-            <div key={`${item}-${index}`} className="flex items-start gap-2 text-[13px] text-white/50">
-              <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-accent/40 shrink-0" />
-              <span>
-                {item}
-                {index === bullets.length - 1 && isStreaming && cursor}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StreamContent({ content, timestamp }: { content: string, timestamp?: number }) {
-  const [displayed, setDisplayed] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
-  
-  useEffect(() => {
-    const isNew = Date.now() - (timestamp || 0) < 2000;
-    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (!isNew || prefersReduced) {
-      setDisplayed(content);
-      setIsStreaming(false);
-      return;
-    }
-
-    setIsStreaming(true);
-    let index = 0;
-
-    const tick = () => {
-      index += 2;
-      if (index > content.length) index = content.length;
-      setDisplayed(content.slice(0, index));
-      if (index === content.length) {
-        setIsStreaming(false);
-        return;
-      }
-      // Variable speed: pause on punctuation, accelerate over time
-      const char = content[index - 1] || "";
-      let delay: number;
-      if (char === "." || char === "!" || char === "?") delay = 60;
-      else if (char === "," || char === ";" || char === ":") delay = 40;
-      else if (char === "\n") delay = 70;
-      else delay = Math.max(10, 16 - Math.floor(index / 80)); // accelerate
-      setTimeout(tick, delay);
-    };
-
-    const t = setTimeout(tick, 14);
-    return () => clearTimeout(t);
-  }, [content, timestamp]);
-
-  return renderStructuredAiContent(displayed, isStreaming);
-}
-
-// ── Dynamic Agentic Helper ──
-function generateDynamicAutomation(prompt: string) {
-  const p = prompt.toLowerCase();
-  
-  // Default fallback
-  let trigger = "New form submission";
-  let action = "Send notification";
-  let fields = [
-    { key: "target", label: "Target Email/Phone", type: "text", placeholder: "e.g., team@company.com" },
-    { key: "message", label: "Message Content", type: "text", placeholder: "Hello, we received a request..." },
-    { key: "priority", label: "Priority", type: "select", options: [{label: "Standard", value: "standard"}, {label: "High Priority", value: "high"}] },
-    { key: "enableLogging", label: "Enable Audit Logging", type: "toggle", defaultValue: true }
-  ];
-  let thinkingSteps = [
-    "Analyzing your automation...\nParsing natural language input",
-    "Analyzing your automation...\n✓ Parsed natural language input\nIdentifying trigger event",
-    "Analyzing your automation...\n✓ Parsed natural language input\n✓ Trigger event identified\nMapping action path",
-    "Analyzing your automation...\n✓ Parsed natural language input\n✓ Trigger event identified\n✓ Action path mapped\nResolving data schema"
-  ];
-  
-  // Rule 1: Google Sheets / CRM
-  if (p.includes("sheet") || p.includes("crm")) {
-    trigger = "New row in Google Sheets";
-    action = "Create record in CRM";
-    fields = [
-      { key: "sheetId", label: "Google Spreadsheet URL / ID", type: "text", placeholder: "https://docs.google.com/spreadsheets/d/1BxiM..." },
-      { key: "worksheet", label: "Worksheet Name", type: "text", placeholder: "Sheet1" },
-      { key: "mapping", label: "Data Mapping Mode", type: "select", options: [{label: "Auto-detect columns", value: "auto"}, {label: "Manual mapping", value: "manual"}] },
-      { key: "crmPipeline", label: "Target Pipeline", type: "text", placeholder: "e.g., Inbound Leads" }
-    ];
-    thinkingSteps = [
-      "Analyzing your automation...\nExtracting entities: 'Google Sheets', 'CRM'",
-      "Analyzing your automation...\n✓ Entities extracted\nValidating Sheets API schema",
-      "Analyzing your automation...\n✓ Entities extracted\n✓ Schema validated\nMapping row data to CRM fields",
-      "Analyzing your automation...\n✓ Entities extracted\n✓ Schema validated\n✓ Fields mapped\nGenerating setup parameters"
-    ];
-  } 
-  // Rule 2: WhatsApp / Slack / Discord / Alert
-  else if (p.includes("whatsapp") || p.includes("slack") || p.includes("discord") || p.includes("alert") || p.includes("message")) {
-    const platform = p.includes("slack") ? "Slack" : p.includes("whatsapp") ? "WhatsApp" : p.includes("discord") ? "Discord" : "Platform";
-    trigger = "New event trigger";
-    action = `Send ${platform} message`;
-    fields = [
-      { key: "channel", label: "Target Channel / Number", type: "text", placeholder: p.includes("slack") ? "#general" : "+1 (555) 000-0000" },
-      { key: "template", label: "Message Template", type: "text", placeholder: "New lead: {{name}}..." },
-      { key: "mentions", label: "Alert Mentions", type: "text", placeholder: "@sales-team" }
-    ];
-    thinkingSteps = [
-      `Analyzing your automation...\nParsing ${platform} integration requirements`,
-      `Analyzing your automation...\n✓ Requirements parsed\nAuthenticating webhook endpoint`,
-      `Analyzing your automation...\n✓ Requirements parsed\n✓ Webhook authenticated\nFormatting message payload`,
-      `Analyzing your automation...\n✓ Requirements parsed\n✓ Webhook authenticated\n✓ Payload formatted\nFinalizing configuration`
-    ];
-  }
-  // Rule 3: Email / Gmail
-  else if (p.includes("email") || p.includes("gmail") || p.includes("mail")) {
-    trigger = "New incoming email";
-    action = "Process and categorize email";
-    fields = [
-      { key: "mailbox", label: "Monitored Mailbox", type: "text", placeholder: "support@yourdomain.com" },
-      { key: "filter", label: "Processing Filter", type: "select", options: [{label: "All emails", value: "all"}, {label: "Only with attachments", value: "attachments"}] },
-      { key: "autoReply", label: "Auto-Reply Template", type: "text", placeholder: "Thanks for reaching out..." }
-    ];
-    thinkingSteps = [
-      "Analyzing your automation...\nScanning email routing protocols",
-      "Analyzing your automation...\n✓ Routing protocols scanned\nDefining AI categorization logic",
-      "Analyzing your automation...\n✓ Routing protocols scanned\n✓ Logic defined\nBuilding auto-reply flow",
-      "Analyzing your automation...\n✓ Routing protocols scanned\n✓ Logic defined\n✓ Flow built\nPreparing mailbox connection"
-    ];
-  }
-
-  const setupFields = fields.map(f => f.label);
-
-  return { trigger, action, fields, setupFields, thinkingSteps };
-}
-
 export function ChatContainer({ chatId, initialPrompt, ultraThinking: ultraThinkingProp = false }: ChatContainerProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const helpRef = useRef<HTMLDivElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setIsDropdownOpen(false);
       }
+      if (helpRef.current && !helpRef.current.contains(e.target as Node)) {
+        setIsHelpOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ── Zustand global store (must come before any derived state) ──
   const { sessions, updateSession, setNodes: setStoreNodes } = useChatStore();
   const [isClient, setIsClient] = useState(false);
   useEffect(() => setIsClient(true), []);
@@ -546,26 +157,42 @@ export function ChatContainer({ chatId, initialPrompt, ultraThinking: ultraThink
 
   const [inputText, setInputText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const [isAiTyping, setIsAiTyping] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [hasTested, setHasTested] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [hasDeployed, setHasDeployed] = useState(false);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
-  // Stores the current automation context for passing to ReadyCard
-  const currentAutomationRef = useRef<ReturnType<typeof generateDynamicAutomation> | null>(null);
-
+  const currentAutomationRef = useRef<any | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
-  const [isRecording, setIsRecording] = useState(false);
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
-
   const [ultraThinking, setUltraThinking] = useState(ultraThinkingProp);
-  const [showUpgradePopup, setShowUpgradePopup] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
-  const isStarterPlan = true;
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // ── Real AI Streaming via useAutomationChat ──────────────────────
+  const {
+    messages: aiMessages,
+    status: aiStatus,
+    stop: stopGeneration,
+    submitPrompt,
+  } = useAutomationChat({
+    chatId,
+    ultraThinking,
+    onNodesUpdate: (newNodes) => {
+      setNodes(newNodes);
+      setWorkspaceState("canvas_visible");
+      setIsPanelOpen(true);
+      setStep("ready");
+    },
+    onWorkflowBuilt: (name) => {
+      if (name) setChatTitle(name);
+    },
+  });
+  const isGenerating = aiStatus === "streaming" || aiStatus === "submitted";
+  // ────────────────────────────────────────────────────────────────
 
   // Relative time ticker
   const [, setTick] = useState(0);
@@ -574,200 +201,145 @@ export function ChatContainer({ chatId, initialPrompt, ultraThinking: ultraThink
     return () => clearInterval(interval);
   }, []);
 
+  // Task 5: Auto-focus textarea on load and on '/' press
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const browserWindow = window as SpeechRecognitionWindow;
-      const SpeechRecognition =
-        browserWindow.SpeechRecognition || browserWindow.webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        recognitionRef.current = new SpeechRecognition();
-        recognitionRef.current.continuous = false;
-        recognitionRef.current.interimResults = false;
-        recognitionRef.current.onresult = (event) => {
-          const transcript = event.results[0][0].transcript;
-          setInputText(prev => prev ? `${prev} ${transcript}` : transcript);
-        };
-        recognitionRef.current.onerror = (event) => {
-          console.error("Speech recognition error", event.error);
-          setIsRecording(false);
-        };
-        recognitionRef.current.onend = () => {
-          setIsRecording(false);
-        };
-      }
+    if (textareaRef.current) {
+      textareaRef.current.focus();
     }
   }, []);
 
-  const toggleMic = () => {
-    if (!recognitionRef.current) {
-      alert("Microphone text-to-speech is not supported in this browser.");
-      return;
-    }
-    if (isRecording) {
-      recognitionRef.current.stop();
-      setIsRecording(false);
-    } else {
-      try {
-        recognitionRef.current.start();
-        setIsRecording(true);
-      } catch (e) {
-        console.error(e);
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "/" && document.activeElement !== textareaRef.current) {
+        e.preventDefault();
+        textareaRef.current?.focus();
       }
-    }
-  };
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, aiMessages, isGenerating, scrollToBottom]);
+
+  // Task 6.1: detect scroll position for FAB
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setShowScrollBtn(distFromBottom > 200);
+    };
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, []);
 
   const handleFileAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files);
       setAttachedFiles(prev => [...prev, ...newFiles]);
     }
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const removeFile = (fileName: string) => {
-    setAttachedFiles(prev => prev.filter(f => f.name !== fileName));
+  const removeFile = (name: string) => {
+    setAttachedFiles(prev => prev.filter(f => f.name !== name));
   };
 
-  useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+  const addMessage = (role: "user" | "ai" | "system" | "thinking", content: string, newWorkspaceState?: WorkspaceState, formDef?: any, isReadyCard?: boolean) => {
+    const newMsg: Message = { id: crypto.randomUUID(), role, content, timestamp: Date.now() };
+    if (formDef) newMsg.form = formDef;
+    if (isReadyCard) newMsg.isReadyCard = true;
+    setMessages((prev) => [...prev, newMsg]);
+    if (newWorkspaceState) setWorkspaceState(newWorkspaceState);
+  };
+
+  const handleFormSubmit = (msgId: string, values: any) => {
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === msgId ? { ...m, isFormSubmitted: true, formValues: values } : m
+      )
+    );
+  };
+
+  const handleSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!inputText.trim() && attachedFiles.length === 0) return;
+    if (isGenerating) return;
+
+    let input = inputText.trim();
+    if (attachedFiles.length > 0) {
+      input += `\n[Attached Files: ${attachedFiles.map(f => f.name).join(", ")}]`;
     }
-  }, [messages, step, workspaceState]);
+    setInputText("");
+    setAttachedFiles([]);
+    setWorkspaceState("ready_to_build");
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const now = new Date().toISOString();
-      const previous = readChatIndex().filter((entry) => entry && entry.chatId);
-      const nextEntry: ChatIndexEntry = { chatId, title: chatTitle, updatedAt: now, isStarred };
-      const merged = [nextEntry, ...previous.filter((entry) => entry.chatId !== chatId)]
-        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-        .slice(0, 10);
-      writeChatIndex(merged);
-    }
-  }, [messages, step, workspaceState, nodes, chatTitle, isStarred, chatId]);
-
-  const addMessage = (role: Message["role"], content: string, state?: WorkspaceState, form?: FormDef, isReadyCard?: boolean, engineCards?: EngineCards) => {
-    setMessages(p => [...p, { id: Math.random().toString(36).substring(7), role, content, state, form, isReadyCard, engineCards, timestamp: Date.now() }]);
+    // Route to real AI streaming
+    submitPrompt(input);
   };
 
-  const removeMessageByRole = (role: Message["role"]) => {
-    setMessages(p => p.filter(m => m.role !== role));
-  };
+  const handleTest = async () => {
+    setIsTesting(true);
+    setIsPanelOpen(true);
 
-  // Open panel automatically when canvas becomes visible
-  useEffect(() => {
-    if (workspaceState === "canvas_visible") {
-      setIsPanelOpen(true);
-    }
-  }, [workspaceState]);
-
-  useEffect(() => {
-    const isInitialBoot = step === "boot" && workspaceState === "understanding";
-    if (!isInitialBoot) return;
-
-    const runBootSequence = async () => {
-      setNodes(n => n.map(x => x.id === "n2" ? { ...x, status: "active" } : x));
-
-      removeMessageByRole("system");
-
-      const automation = generateDynamicAutomation(initialPrompt || "");
-      currentAutomationRef.current = automation;
-
-      // Phase 1: Parse natural language
-      addMessage("thinking", automation.thinkingSteps[0]);
-      await new Promise(r => setTimeout(r, 1500));
-
-      // Phase 2: Identify trigger
-      removeMessageByRole("thinking");
-      addMessage("thinking", automation.thinkingSteps[1]);
-      await new Promise(r => setTimeout(r, 1200));
-
-      // Phase 3: Map action path
-      removeMessageByRole("thinking");
-      addMessage("thinking", automation.thinkingSteps[2]);
-      await new Promise(r => setTimeout(r, 1200));
-
-      // Phase 4: Resolve data schema
-      removeMessageByRole("thinking");
-      addMessage("thinking", automation.thinkingSteps[3]);
-      await new Promise(r => setTimeout(r, 1000));
-
-      // Phase 5: Complete analysis
-      removeMessageByRole("thinking");
-      addMessage("thinking", automation.thinkingSteps[3] + "\n✓ Analysis complete");
+    for (let i = 0; i < nodes.length; i++) {
+      setNodes(n => n.map((x, idx) =>
+        idx === i ? { ...x, status: "active" } : idx < i ? { ...x, status: "completed" } : x
+      ));
       await new Promise(r => setTimeout(r, 800));
-
-      removeMessageByRole("thinking");
-
-      // Phase 6: Show structured engine cards + form
-      setWorkspaceState("collecting_inputs");
-      addMessage(
-        "ai",
-        "",
-        "collecting_inputs",
-        {
-          title: "Setup Configuration",
-          description: "Enter the target destination details",
-          fields: automation.fields as FieldDef[]
-        },
-        false,
-        {
-          trigger: automation.trigger,
-          action: automation.action,
-          setupFields: automation.setupFields
-        }
-      );
-      setStep("wait_message");
-    };
-
-    runBootSequence();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleFormSubmit = async (messageId: string, values: Record<string, FieldValue>) => {
-    setMessages(p => p.map(m => m.id === messageId ? { ...m, isFormSubmitted: true, formValues: values } : m));
-
-    const inputSummary = Object.values(values).find(v => typeof v === 'string' && v.length > 0) || "the specified target";
-
-    if (ultraThinking) {
-      addMessage("system", "Using advanced reasoning mode...");
-      await new Promise(r => setTimeout(r, 600));
     }
+    setNodes(n => n.map(x => ({ ...x, status: "completed" })));
+    await new Promise(r => setTimeout(r, 400));
 
-    if (step === "wait_message") {
-      setWorkspaceState("ready_to_build");
-      
-      addMessage("thinking", "Building your automation...\nInitializing workflow engine");
-      setNodes(n => n.map(x => x.id === "n2" ? { ...x, status: "completed", detail: "Configured via GPT-4o" } : x));
-
-      await new Promise(r => setTimeout(r, 1300));
-      removeMessageByRole("thinking");
-      addMessage("thinking", "Building your automation...\n✓ Workflow engine initialized\nApplying configuration");
-      setNodes(n => n.map(x => x.id === "n3" ? { ...x, status: "active" } : x));
-
-      await new Promise(r => setTimeout(r, 1100));
-      removeMessageByRole("thinking");
-      addMessage("thinking", "Building your automation...\n✓ Workflow engine initialized\n✓ Configuration applied\nConnecting action nodes");
-
-      await new Promise(r => setTimeout(r, 1100));
-      removeMessageByRole("thinking");
-      addMessage("thinking", "Building your automation...\n✓ Workflow engine initialized\n✓ Configuration applied\n✓ Action nodes connected\nValidating pipeline");
-
-      await new Promise(r => setTimeout(r, 900));
-      removeMessageByRole("thinking");
-      
-      setWorkspaceState("canvas_visible");
-
-      setNodes(n => n.map(x => x.id === "n3" ? { ...x, status: "completed", detail: `Sending to ${inputSummary}` } : x));
-      addMessage(
-        "ai",
-        "",
-        "canvas_visible",
-        undefined,
-        true
-      );
-      setStep("ready");
-    }
+    setIsTesting(false);
+    setHasTested(true);
+    submitPrompt("__system_test_passed__");
+    addMessage("ai", "**Test Passed ✓**\nAll pipeline steps executed without errors. Your automation is ready to deploy.");
   };
+
+  const handleDeploy = async () => {
+    setIsDeploying(true);
+    await new Promise(r => setTimeout(r, 1800));
+    setIsDeploying(false);
+    setHasDeployed(true);
+    setStep("deployed");
+    addMessage("ai", "**Pipeline Deployed ✓**\nYour automation is now live and actively listening for incoming triggers.");
+  };
+
+  const handleSuggestionClick = (suggestion: string) => {
+    setInputText(suggestion);
+    setTimeout(() => {
+      const form = document.querySelector<HTMLFormElement>("form[data-chat-form]");
+      if (form) form.requestSubmit();
+    }, 50);
+  };
+
+  const isInputDisabled = isGenerating;
+  const isCanvasVisible = workspaceState === "canvas_visible";
+  const hasMessages = messages.length > 0 || aiMessages.length > 0;
+
+  // Task 2.3: Context-aware placeholder
+  const composerPlaceholder = (() => {
+    if (step === "deployed") return "Need changes? Describe what to update...";
+    if (isCanvasVisible) return "Adjust the pipeline, add a step, or ask a question...";
+    if (hasMessages) return "Modify the workflow, or describe a new one...";
+    return "What would you like to build?";
+  })();
+
+  const systemPhase: SystemPhase = (() => {
+    if (step === "deployed") return "success";
+    if (hasTested) return "ready";
+    if (isTesting) return "testing";
+    if (isDeploying) return "deploying";
+    if (workspaceState === "ready_to_build" || isGenerating) return "building";
+    return "idle";
+  })();
 
   const handleCopy = async (id: string, text: string) => {
     try {
@@ -781,588 +353,219 @@ export function ChatContainer({ chatId, initialPrompt, ultraThinking: ultraThink
     }
   };
 
-  const handleEdit = (text: string) => {
-    setInputText(text);
-  };
-
-  const handleSubmit = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!inputText.trim() && attachedFiles.length === 0) return;
-
-    let input = inputText.trim();
-    if (attachedFiles.length > 0) {
-      input += `\n[Attached Files: ${attachedFiles.map(f => f.name).join(", ")}]`;
-    }
-    setInputText("");
-    setAttachedFiles([]);
-    addMessage("user", input);
-
-    if (ultraThinking) {
-      addMessage("system", "Using advanced reasoning mode...");
-      await new Promise(r => setTimeout(r, 600));
-    }
-
-    if (step === "wait_message") {
-      const automation = currentAutomationRef.current ?? generateDynamicAutomation(input);
-      currentAutomationRef.current = automation;
-
-      setWorkspaceState("ready_to_build");
-      
-      addMessage("thinking", `Building your automation...\nInitializing ${automation.trigger} listener`);
-      setNodes(n => n.map(x => x.id === "n2" ? { ...x, status: "completed", detail: "AI engine configured" } : x));
-
-      await new Promise(r => setTimeout(r, 1300));
-      removeMessageByRole("thinking");
-      addMessage("thinking", `Building your automation...\n✓ ${automation.trigger} listener ready\nConfiguring action: ${automation.action}`);
-      setNodes(n => n.map(x => x.id === "n3" ? { ...x, status: "active" } : x));
-
-      await new Promise(r => setTimeout(r, 1100));
-      removeMessageByRole("thinking");
-      addMessage("thinking", `Building your automation...\n✓ ${automation.trigger} listener ready\n✓ ${automation.action} configured\nConnecting data pipeline`);
-
-      await new Promise(r => setTimeout(r, 1100));
-      removeMessageByRole("thinking");
-      addMessage("thinking", `Building your automation...\n✓ ${automation.trigger} listener ready\n✓ ${automation.action} configured\n✓ Data pipeline connected\nValidating & compiling`);
-
-      await new Promise(r => setTimeout(r, 900));
-      removeMessageByRole("thinking");
-      
-      setWorkspaceState("canvas_visible");
-
-      setNodes(n => n.map(x => x.id === "n3" ? { ...x, status: "completed", detail: automation.action } : x));
-      addMessage("ai", "", "canvas_visible", undefined, true);
-      setStep("ready");
-
-    } else if (step === "ready" || step === "deployed") {
-      setWorkspaceState("ready_to_build");
-      addMessage("thinking", "Analyzing your automation...\nParsing modification request");
-      setNodes(n => n.map(x => x.id === "n3" ? { ...x, status: "active", detail: "Updating target..." } : x));
-      
-      await new Promise(r => setTimeout(r, 1200));
-      removeMessageByRole("thinking");
-      addMessage("thinking", "Analyzing your automation...\n✓ Modification request parsed\nRecomputing action graph");
-
-      await new Promise(r => setTimeout(r, 1100));
-      removeMessageByRole("thinking");
-      addMessage("thinking", "Analyzing your automation...\n✓ Modification request parsed\n✓ Action graph recomputed\nApplying node changes");
-
-      await new Promise(r => setTimeout(r, 1000));
-      removeMessageByRole("thinking");
-      addMessage("thinking", "Analyzing your automation...\n✓ Modification request parsed\n✓ Action graph recomputed\n✓ Node changes applied\nRevalidating pipeline");
-
-      await new Promise(r => setTimeout(r, 800));
-      removeMessageByRole("thinking");
-
-      setHasTested(false);
-      setHasDeployed(false);
-
-      setWorkspaceState("canvas_visible");
-      setNodes(n => n.map(x => x.id === "n3" ? { ...x, status: "completed", detail: "Updated action node" } : x));
-
-      addMessage(
-        "ai",
-        "",
-        "canvas_visible",
-        undefined,
-        true
-      );
-      setStep("ready");
-    }
-  };
-
-  const handleTest = async () => {
-    setIsTesting(true);
-    setIsPanelOpen(true);
-
-    // Step through each node sequentially
-    for (let i = 0; i < nodes.length; i++) {
-      setNodes(n => n.map((x, idx) =>
-        idx === i ? { ...x, status: "active" } : idx < i ? { ...x, status: "completed" } : x
-      ));
-      await new Promise(r => setTimeout(r, 800));
-    }
-    // Mark all as completed
-    setNodes(n => n.map(x => ({ ...x, status: "completed" })));
-    await new Promise(r => setTimeout(r, 400));
-
-    setIsTesting(false);
-    setHasTested(true);
-    addMessage("ai", "**Test Passed**\nAll pipeline steps executed without errors. Ready to deploy.");
-  };
-
-  const handleDeploy = async () => {
-    setIsDeploying(true);
-    await new Promise(r => setTimeout(r, 2000));
-    setIsDeploying(false);
-    setHasDeployed(true);
-    setStep("deployed");
-    addMessage("ai", "**Pipeline Deployed**\nYour automation is live and listening for incoming triggers.");
-  };
-
-  const handleSuggestionClick = (suggestion: string) => {
-    setInputText(suggestion);
-    // Auto-submit after a brief tick so state updates flush first
-    setTimeout(() => {
-      const form = document.querySelector<HTMLFormElement>("form[data-chat-form]");
-      if (form) form.requestSubmit();
-    }, 50);
-  };
-
-  const isInputDisabled = workspaceState === "ready_to_build" || workspaceState === "understanding";
-  const isCanvasVisible = workspaceState === "canvas_visible";
-  const hasMessages = messages.length > 0;
-
-  // ── Derive system phase for the header status badge ──
-  const systemPhase: SystemPhase = (() => {
-    if (hasDeployed) return "success";
-    if (isDeploying) return "deploying";
-    if (isTesting) return "testing";
-    if (hasTested && step === "ready") return "ready";
-    if (step === "ready" && !hasTested) return "ready";
-    if (workspaceState === "ready_to_build") return "building";
-    if (workspaceState === "understanding" && hasMessages) return "building";
-    return "idle";
-  })();
+  if (!isClient) {
+    return <div className="chat-shell-bg min-h-screen flex items-center justify-center">
+      <div className="h-8 w-8 rounded-full border-2 border-accent border-t-transparent animate-spin" />
+    </div>;
+  }
 
   return (
-    <div className="chat-shell-bg flex h-full w-full overflow-hidden">
-      <CommandPalette />
+    <div className="chat-shell-bg flex h-screen overflow-hidden selection:bg-accent/30 selection:text-white">
+      <CommandPalette 
+        onTest={handleTest}
+        onDeploy={handleDeploy}
+        onTogglePreview={() => setIsPanelOpen(!isPanelOpen)}
+        isCanvasVisible={isCanvasVisible}
+        hasTested={hasTested}
+        isDeploying={isDeploying}
+      />
 
       {/* ─── Main Chat Area ─── */}
-      <div className={`relative flex h-full flex-col min-w-0 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-        isPanelOpen && isCanvasVisible ? "w-[40%] shrink-0" : "flex-1"
-      }`}>
+      <div className={`relative flex flex-col transition-all duration-500 ease-[0.22,1,0.36,1] h-full ${isPanelOpen && isCanvasVisible ? "w-1/2" : "w-full"} shrink-0`}>
+        
+        {/* TASK 4: Upgrade the Chat Header */}
+        <header className="chat-header-surface absolute top-0 left-0 right-0 z-40 flex h-[52px] items-center justify-between border-b px-4">
+          {/* Task 5.1: Breadcrumb navigation */}
+          <div className="flex items-center gap-1.5 w-1/3 min-w-0">
+            <Link href="/dashboard" className="text-[12px] text-white/40 hover:text-white/70 transition-colors shrink-0">
+              Dashboard
+            </Link>
+            <span className="text-[12px] text-white/20 shrink-0">/</span>
+            <span className="text-[12px] text-white/40 shrink-0">Automations</span>
+            <span className="text-[12px] text-white/20 shrink-0">/</span>
+            
+            <div className="relative min-w-0" ref={dropdownRef}>
+              <div
+                className="group flex items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-white/[0.04] transition-colors cursor-pointer min-w-0"
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              >
+                {isEditingTitle ? (
+                  <input
+                    ref={titleInputRef}
+                    value={draftTitle}
+                    onChange={(e) => setDraftTitle(e.target.value)}
+                    onBlur={saveTitle}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveTitle();
+                      if (e.key === "Escape") {
+                        setDraftTitle(chatTitle);
+                        setIsEditingTitle(false);
+                      }
+                    }}
+                    className="bg-transparent text-[12px] font-medium text-white/90 outline-none w-[160px]"
+                  />
+                ) : (
+                  <span className="text-[12px] font-medium text-white/85 select-none truncate max-w-[180px]">{chatTitle}</span>
+                )}
+                {!isEditingTitle && <ChevronDown className={`h-3 w-3 text-white/40 transition-transform shrink-0 ${isDropdownOpen ? "rotate-180" : ""}`} />}
+              </div>
 
-        {/* Header */}
-        <div className="chat-header-surface relative z-50 flex h-[52px] shrink-0 items-center justify-between border-b px-5">
-          <div className="relative flex items-center" ref={dropdownRef}>
-            <div className="flex items-center gap-1">
-              {isEditingTitle ? (
-                <input
-                  ref={titleInputRef}
-                  value={draftTitle}
-                  onChange={(event) => setDraftTitle(event.target.value)}
-                  onBlur={saveTitle}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") { event.preventDefault(); saveTitle(); }
-                    if (event.key === "Escape") { setDraftTitle(chatTitle); setIsEditingTitle(false); }
-                  }}
-                  className="h-8 w-[170px] rounded-lg border border-white/10 bg-[#151515] px-3 text-[13px] font-semibold text-white outline-none focus:border-accent/30 focus:ring-1 focus:ring-accent/20"
-                />
-              ) : (
-                <>
-                  <button
-                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                    className="flex items-center gap-2 rounded-lg px-2 py-1.5 -ml-2 text-white/70 transition-colors hover:bg-white/[0.04] hover:text-white"
+              <AnimatePresence>
+                {isDropdownOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 4, scale: 0.98 }}
+                    transition={{ duration: 0.15, ease: "easeOut" }}
+                    className="absolute left-0 top-full mt-1 w-52 rounded-xl border border-white/[0.08] bg-[#0c0d10] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.5)] z-50"
                   >
-                    <span className="text-[14px] font-semibold">{chatTitle}</span>
-                    <ChevronDown className={`h-3.5 w-3.5 text-white/25 transition-transform duration-200 ${isDropdownOpen ? "rotate-180" : ""}`} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setDraftTitle(chatTitle); setIsDropdownOpen(false); setIsEditingTitle(true); }}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-white/25 transition-colors hover:bg-white/[0.04] hover:text-white/50"
-                  >
-                    <PenLine className="h-3.5 w-3.5" />
-                  </button>
-                </>
-              )}
-
-              {ultraThinking && (
-                <div className="ml-2 flex items-center gap-1.5 rounded-full border border-accent/15 bg-accent/[0.04] px-2 py-0.5">
-                  <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-accent/70">Ultra</span>
-                </div>
-              )}
+                    <button
+                      onClick={() => { setIsEditingTitle(true); setIsDropdownOpen(false); }}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[12px] text-white/60 hover:bg-white/[0.04] hover:text-white"
+                    >
+                      <Pencil className="h-3 w-3" /> Rename
+                    </button>
+                    <button
+                      onClick={() => { setIsStarred(!isStarred); setIsDropdownOpen(false); }}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[12px] text-white/60 hover:bg-white/[0.04] hover:text-white"
+                    >
+                      <Star className={`h-3 w-3 ${isStarred ? "fill-amber-400 text-amber-400" : ""}`} /> 
+                      {isStarred ? "Unfavorite" : "Favorite"}
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-
-            <AnimatePresence>
-              {isDropdownOpen && !isEditingTitle && (
-                <motion.div
-                  initial={{ opacity: 0, y: -6, scale: 0.97 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.97 }}
-                  transition={{ duration: 0.12 }}
-                  className="chat-elevated-surface absolute left-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-xl border py-1"
-                >
-                  <button
-                    onClick={() => { setIsStarred((current) => !current); setIsDropdownOpen(false); }}
-                    className="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[13px] font-medium text-white/50 transition-colors hover:bg-white/[0.04] hover:text-white"
-                  >
-                    <Star className={`h-3.5 w-3.5 ${isStarred ? "fill-current text-accent" : "text-white/30"}`} />
-                    {isStarred ? "Unstar" : "Star"}
-                  </button>
-                  <Link href="/" className="flex px-3.5 py-2 text-[13px] font-medium text-white/50 transition-colors hover:bg-white/[0.04] hover:text-white items-center gap-2.5">
-                    <Home className="h-3.5 w-3.5 text-white/30" />
-                    Home
-                  </Link>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
 
-          {/* Right side: status + panel toggle */}
-          <div className="flex items-center gap-2">
+          <div className="flex w-1/3 justify-center">
             <SystemStatusBar phase={systemPhase} />
+          </div>
+
+          <div className="flex w-1/3 justify-end items-center gap-2">
+            <div className="relative" ref={helpRef}>
+              <button
+                type="button"
+                onClick={() => setIsHelpOpen((current) => !current)}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-white/20 transition-all hover:bg-white/[0.04] hover:text-white/55"
+                aria-label="Open workspace help"
+                aria-expanded={isHelpOpen}
+              >
+                <HelpCircle className="h-3.5 w-3.5" />
+              </button>
+              <AnimatePresence>
+                {isHelpOpen ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: 5, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 5, scale: 0.98 }}
+                    transition={{ duration: 0.15, ease: "easeOut" }}
+                    className="absolute right-0 top-full z-50 mt-2 w-72 rounded-2xl border border-white/[0.08] bg-[#0c0d10] p-4 text-left shadow-[0_18px_48px_rgba(0,0,0,0.55)]"
+                  >
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/25">
+                      Workspace guide
+                    </p>
+                    <div className="mt-3 space-y-2.5">
+                      {helpTips.map((tip, index) => (
+                        <div key={tip} className="flex gap-2.5 text-[12px] leading-5 text-white/55">
+                          <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-accent/15 bg-accent/8 text-[9px] font-semibold text-accent/80">
+                            {index + 1}
+                          </span>
+                          <span>{tip}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
+            </div>
             {isCanvasVisible && (
               <button
                 onClick={() => setIsPanelOpen(!isPanelOpen)}
-                className={`flex h-8 items-center gap-2 rounded-lg px-3 text-[12px] font-medium transition-all duration-200 ${
+                className={`flex h-7 w-7 items-center justify-center rounded-lg transition-all ${
                   isPanelOpen
-                    ? "bg-accent/[0.08] text-accent border border-accent/15"
-                    : "bg-white/[0.03] text-white/40 border border-white/[0.06] hover:bg-white/[0.05] hover:text-white/60"
+                    ? "bg-accent/10 text-accent hover:bg-accent/15"
+                    : "text-white/25 hover:bg-white/[0.04] hover:text-white/50"
                 }`}
+                aria-label={isPanelOpen ? "Hide preview" : "Show preview"}
               >
                 <PanelRight className="h-3.5 w-3.5" />
-                {isPanelOpen ? "Hide Preview" : "Show Preview"}
               </button>
             )}
+            {/* Cmd+K hint */}
+            <div className="hidden sm:flex items-center gap-1 px-1.5 py-0.5 rounded border border-white/[0.05] bg-white/[0.015]">
+              <span className="text-[10px] font-medium text-white/20 tracking-widest">⌘K</span>
+            </div>
           </div>
-        </div>
+        </header>
 
-        {/* Messages area */}
-        <div className="relative flex-1 overflow-hidden">
-          <div className="h-full overflow-y-auto chat-bg-gradient">
-            <div className={`mx-auto px-5 pb-40 pt-6 transition-all duration-300 ${
-              isPanelOpen && isCanvasVisible ? "max-w-full" : "max-w-3xl"
-            }`} role="log" aria-live="polite" aria-label="Automation workspace">
-
-              {/* Empty state */}
-              {!hasMessages && (
-                <motion.div
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  className="relative flex flex-col items-center justify-center pt-[12vh]"
-                >
-                  {/* Ambient gradient backdrop */}
-                  <div className="absolute inset-0 pointer-events-none">
-                    <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[400px] w-[500px] rounded-full bg-accent/[0.03] blur-[100px]" />
-                    <div className="absolute top-1/3 left-1/3 h-[200px] w-[300px] rounded-full bg-violet-500/[0.02] blur-[80px]" />
-                  </div>
-
-                  {/* Hero icon + heading */}
-                  <div className="relative z-10 flex flex-col items-center">
-                    <OrbitalCore />
-                    <h3 className="text-[20px] font-semibold text-white/90 mb-2 tracking-tight">What would you like to automate?</h3>
-                    <p className="text-[14px] text-white/35 mb-10 text-center max-w-[360px] leading-relaxed">
-                      Describe your workflow in plain language and the engine will build it for you.
-                    </p>
-                  </div>
-
-                  {/* Suggestion cards */}
-                  <div className="relative z-10 grid grid-cols-2 gap-3 w-full max-w-[460px]">
-                    {SUGGESTION_CHIPS.map((chip) => (
-                      <button
-                        key={chip.label}
-                        onClick={() => handleSuggestionClick(chip.desc)}
-                        className="liquid-glass group flex flex-col gap-2 rounded-xl border border-white/[0.06] p-4 text-left transition-all duration-300 hover:border-accent/30 hover:shadow-[0_8px_30px_rgba(59,130,246,0.15)] hover:-translate-y-1"
-                      >
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/[0.06] ring-1 ring-accent/[0.08] group-hover:bg-accent/10 transition-colors">
-                          <chip.icon className="h-3.5 w-3.5 text-accent/50 group-hover:text-accent transition-colors duration-250" />
-                        </div>
-                        <span className="text-[13px] font-medium text-white/60 group-hover:text-white/85 transition-colors duration-250">{chip.label}</span>
-                        <span className="text-[11px] text-white/25 leading-relaxed group-hover:text-white/40 transition-colors duration-250">{chip.desc}</span>
-                      </button>
-                    ))}
-                  </div>
-                </motion.div>
+        {/* ─── Scrollable Area ─── */}
+        <div ref={scrollContainerRef} className="chat-scrollable absolute inset-0 overflow-y-auto overflow-x-hidden custom-scrollbar">
+          <div className="flex min-h-full flex-col">
+            <div className={`mx-auto w-full max-w-3xl flex-1 px-5 ${hasMessages ? "pt-[92px] pb-[140px]" : "pt-0 pb-0"}`}>
+              {!hasMessages ? (
+                <EmptyState onSuggestionClick={handleSuggestionClick} />
+              ) : (
+                <MessageList
+                  messages={messages}
+                  aiMessages={aiMessages}
+                  isGenerating={isGenerating}
+                  hoveredMsgId={hoveredMsgId}
+                  copiedId={copiedId}
+                  onHoverMsg={setHoveredMsgId}
+                  onCopy={handleCopy}
+                  onEdit={setInputText}
+                  onFormSubmit={handleFormSubmit}
+                  nodes={nodes}
+                  currentAutomation={currentAutomationRef.current}
+                  isTesting={isTesting}
+                  hasTested={hasTested}
+                  isDeploying={isDeploying}
+                  hasDeployed={hasDeployed}
+                  onTest={handleTest}
+                  onDeploy={handleDeploy}
+                  messagesEndRef={messagesEndRef}
+                />
               )}
-
-              {/* Messages */}
-              <AnimatePresence initial={false}>
-                {messages.map((msg) => (
-                  <motion.div
-                    layout
-                    key={msg.id}
-                    initial={{ opacity: 0, y: 12, scale: 0.98 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-                    className={`mb-6 ${msg.role === "user" ? "flex justify-end" : msg.role === "system" ? "flex justify-center" : ""}`}
-                  >
-                    {/* ── USER MESSAGE ── */}
-                    {msg.role === "user" && (
-                      <div
-                        className="max-w-[75%]"
-                        onMouseEnter={() => setHoveredMsgId(msg.id)}
-                        onMouseLeave={() => setHoveredMsgId(null)}
-                      >
-                        <div className="relative rounded-2xl rounded-br-md bg-gradient-to-br from-accent/[0.14] to-accent/[0.06] border border-accent/[0.15] px-5 py-3.5 text-[14px] leading-relaxed text-white/90 whitespace-pre-wrap shadow-[0_8px_24px_rgba(59,130,246,0.12),0_2px_8px_rgba(0,0,0,0.3)] ring-1 ring-accent/[0.08]">
-                          {msg.content}
-                        </div>
-
-                        <div className="flex items-center justify-end gap-1 mt-1.5 mr-1">
-                          <AnimatePresence>
-                            {hoveredMsgId === msg.id && (
-                              <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="flex items-center gap-0.5"
-                              >
-                                <button
-                                  onClick={() => handleCopy(msg.id, msg.content)}
-                                  className="px-1.5 py-0.5 rounded text-[11px] text-white/30 hover:text-white/60 transition-colors"
-                                >
-                                  {copiedId === msg.id ? <Check className="h-3 w-3 text-emerald-400 inline" /> : <Copy className="h-3 w-3 inline" />}
-                                </button>
-                                <button
-                                  onClick={() => handleEdit(msg.content)}
-                                  className="px-1.5 py-0.5 rounded text-[11px] text-white/30 hover:text-white/60 transition-colors"
-                                >
-                                  <Pencil className="h-3 w-3 inline" />
-                                </button>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                          {msg.timestamp && (
-                            <span className="text-[10px] text-white/15">{formatRelativeTime(msg.timestamp)}</span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* ── AI MESSAGE ── */}
-                    {msg.role === "ai" && (
-                      <div className="w-full flex gap-3">
-                        <div className="pt-1 shrink-0">
-                          <AiAvatar />
-                        </div>
-                        <div className="flex-1 min-w-0">
-
-                        {/* ── Unified Integration Card (Analysis + Form) ── */}
-                        {msg.engineCards && msg.form && !msg.isFormSubmitted && (
-                          <IntegrationCard
-                            trigger={msg.engineCards.trigger}
-                            action={msg.engineCards.action}
-                            fields={msg.form.fields}
-                            onSubmit={(values) => handleFormSubmit(msg.id, values)}
-                            timestamp={msg.timestamp}
-                          />
-                        )}
-
-                        {/* Submitted state for unified card */}
-                        {msg.engineCards && msg.form && msg.isFormSubmitted && (
-                          <IntegrationCardSubmitted
-                            trigger={msg.engineCards.trigger}
-                            action={msg.engineCards.action}
-                            values={msg.formValues}
-                            fields={msg.form.fields}
-                          />
-                        )}
-
-                        {/* Fallback: Analysis-only (no form) */}
-                        {msg.engineCards && !msg.form && (
-                          <EngineAnalysisCard
-                            trigger={msg.engineCards.trigger}
-                            action={msg.engineCards.action}
-                            setupFields={msg.engineCards.setupFields}
-                            timestamp={msg.timestamp}
-                          />
-                        )}
-
-                        {/* Standalone form (no analysis) */}
-                        {!msg.engineCards && msg.form && !msg.isFormSubmitted && (
-                          <div className="mt-3">
-                            <FormCard
-                              title={msg.form.title}
-                              description={msg.form.description}
-                              fields={msg.form.fields}
-                              onSubmit={(values) => handleFormSubmit(msg.id, values)}
-                            />
-                          </div>
-                        )}
-
-                        {/* AI text content — streamed, glass card */}
-                        {msg.content && (
-                          <div className="liquid-glass rounded-xl border border-white/[0.06] px-4 py-3.5 mb-3 shadow-[0_4px_20px_rgba(0,0,0,0.25)]">
-                            <StreamContent content={msg.content} timestamp={msg.timestamp} />
-                            {msg.timestamp && (
-                              <span className="mt-3 block text-[10px] text-white/15">{formatRelativeTime(msg.timestamp)}</span>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Ready Card — inline Test / Deploy / Modify */}
-                        {msg.isReadyCard && (
-                          <div className="mt-3">
-                            <ReadyCard
-                              title="Automation ready"
-                              description="Workflow built — review, test, and deploy below"
-                              trigger={currentAutomationRef.current?.trigger ?? nodes.find((node) => node.type === "trigger")?.label}
-                              action={currentAutomationRef.current?.action ?? nodes.find((node) => node.type === "action")?.label}
-                              explanation={`When ${currentAutomationRef.current?.trigger ?? "a trigger fires"}, the system will automatically ${(currentAutomationRef.current?.action ?? "execute the configured action").toLowerCase()}.`}
-                              isTesting={isTesting}
-                              hasTested={hasTested}
-                              isDeploying={isDeploying}
-                              hasDeployed={hasDeployed}
-                              onTest={handleTest}
-                              onDeploy={handleDeploy}
-                              onModify={() => {
-                                const input = document.querySelector('textarea');
-                                if (input) input.focus();
-                              }}
-                            />
-                          </div>
-                        )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* ── THINKING STATE ── */}
-                    {msg.role === "thinking" && (
-                      <motion.div
-                        className="w-full flex gap-3"
-                        exit={{ opacity: 0, scale: 0.96 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <div className="pt-1 shrink-0">
-                          <AiAvatar isActive />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <ProgressCard steps={msg.content.split('\n')} />
-                        </div>
-                      </motion.div>
-                    )}
-
-                    {/* ── SYSTEM MESSAGES ── */}
-                    {msg.role === "system" && (
-                      msg.content.toLowerCase().includes("building your automation") ||
-                      msg.content.toLowerCase().includes("applying configuration") ? (
-                        <div className="w-full">
-                          <ThinkingIndicator label={msg.content} variant="card" />
-                        </div>
-                      ) : (
-                        <ThinkingIndicator label={msg.content} variant="pill" />
-                      )
-                    )}
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-
-              {isAiTyping && (
-                <div className="mb-6 flex justify-start">
-                  <div className="w-full">
-                    <div className="border-l-2 border-accent/20 pl-4 py-2">
-                      <ThinkingIndicator label="Generating response" variant="pill" />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div ref={messagesEndRef} className="h-4" />
             </div>
           </div>
         </div>
+
+        {/* Task 6.1: Scroll-to-bottom FAB */}
+        <AnimatePresence>
+          {showScrollBtn && hasMessages && (
+            <motion.button
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ duration: 0.15 }}
+              onClick={scrollToBottom}
+              className="absolute bottom-[120px] right-6 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-[#161820] border border-white/[0.08] text-white/40 hover:text-white/70 hover:bg-[#1e2028] shadow-[0_4px_12px_rgba(0,0,0,0.4)] transition-all"
+              aria-label="Scroll to bottom"
+            >
+              <ChevronsDown className="h-4 w-4" />
+            </motion.button>
+          )}
+        </AnimatePresence>
 
         {/* ─── Floating Input Bar ─── */}
-        <div className="absolute bottom-0 left-0 right-0 z-10 flex justify-center bg-gradient-to-t from-[#08090b] via-[#08090b]/97 to-transparent px-5 pb-6 pt-16 pointer-events-none">
-          <form
+        <div className="absolute bottom-0 left-0 right-0 z-10 flex justify-center bg-gradient-to-t from-[#08090b] via-[#08090b]/94 to-transparent px-5 pb-5 pt-14 pointer-events-none">
+          <Composer
+            value={inputText}
+            onChange={setInputText}
             onSubmit={handleSubmit}
-            data-chat-form
-            className={`chat-composer-surface w-full flex flex-col gap-2.5 rounded-2xl border px-5 py-4 transition-all duration-300 pointer-events-auto
-              ${isPanelOpen && isCanvasVisible ? "max-w-full" : "max-w-3xl"}
-              ${isInputDisabled ? "opacity-50 border-white/[0.04]" : "border-white/[0.06] focus-within:border-accent/25 focus-within:shadow-[0_0_0_3px_rgba(59,130,246,0.08),0_0_30px_rgba(59,130,246,0.04)]"}
-            `}
-          >
-            {/* LOGIC EXPLAINED:
-            The workspace composer uses the same textarea reset as the homepage
-            so browser-native focus borders do not create a second inner box. */}
-            <textarea
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                   e.preventDefault();
-                   handleSubmit();
-                }
-              }}
-              placeholder={isInputDisabled ? "Engine is processing..." : "Describe what you want to automate..."}
-              disabled={isInputDisabled}
-              className="prompt-textarea caret-accent w-full min-h-[52px] max-h-[180px] resize-none bg-transparent text-[14px] leading-relaxed text-white outline-none placeholder:text-white/20 disabled:cursor-not-allowed"
-            />
-
-            {/* Enter hint */}
-            {!isInputDisabled && !inputText.trim() && (
-              <div className="flex items-center gap-1.5 pt-0.5 pb-1">
-                <kbd className="px-1.5 py-0.5 rounded bg-white/[0.04] border border-white/[0.06] text-[9px] font-mono text-white/20">↵</kbd>
-                <span className="text-[10px] text-white/15">Press Enter to build</span>
-              </div>
-            )}
-
-            {/* Bottom Actions */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-white/30 hover:bg-white/[0.04] hover:text-white/50 transition-all"
-                  aria-label="Attach file"
-                >
-                  <Paperclip className="h-3.5 w-3.5" />
-                </button>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  className="hidden"
-                  onChange={handleFileAttach}
-                  multiple
-                />
-
-                {/* Attached files */}
-                {attachedFiles.map(file => (
-                   <div key={file.name} className="flex items-center gap-1 bg-white/[0.03] border border-white/[0.06] text-[11px] px-2 py-1 rounded-md text-white/50">
-                     <span className="truncate max-w-[100px]">{file.name}</span>
-                     <button type="button" onClick={() => removeFile(file.name)} className="hover:text-white text-white/25">
-                       <X className="h-3 w-3" />
-                     </button>
-                   </div>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={toggleMic}
-                  className={`flex h-7 w-7 items-center justify-center rounded-md transition-all ${
-                    isRecording
-                      ? "bg-red-500/10 text-red-400"
-                      : "text-white/25 hover:bg-white/[0.04] hover:text-white/45"
-                  }`}
-                  aria-label={isRecording ? "Stop recording" : "Use microphone"}
-                >
-                  <Mic className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="submit"
-                  disabled={(!inputText.trim() && attachedFiles.length === 0) || isInputDisabled}
-                  className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-300 active:scale-[0.93] overflow-hidden ${
-                    (!inputText.trim() && attachedFiles.length === 0) && !isInputDisabled
-                      ? "bg-white/[0.04] text-white/20"
-                      : isInputDisabled
-                      ? "bg-transparent"
-                      : "bg-gradient-to-br from-accent to-blue-600 text-white shadow-[0_4px_14px_rgba(59,130,246,0.3)] hover:shadow-[0_6px_20px_rgba(59,130,246,0.4)] hover:scale-105"
-                  }`}
-                  aria-label={isInputDisabled ? "Processing" : "Send message"}
-                >
-                  <AnimatePresence mode="wait">
-                    {isInputDisabled ? (
-                      <motion.div 
-                        key="loading"
-                        className="absolute inset-0 rounded-xl border-2 border-accent/20 border-t-accent"
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                      />
-                    ) : (
-                      <motion.div key="arrow" initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>
-                        <ArrowUp className="h-4 w-4 stroke-[2.5]" />
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </button>
-              </div>
-            </div>
-          </form>
+            onStop={stopGeneration}
+            isGenerating={isGenerating}
+            disabled={isInputDisabled}
+            isPanelOpen={isPanelOpen}
+            isCanvasVisible={isCanvasVisible}
+            attachedFiles={attachedFiles}
+            onRemoveFile={removeFile}
+            onFileAttach={handleFileAttach}
+            fileInputRef={fileInputRef}
+            textareaRef={textareaRef}
+            placeholder={composerPlaceholder}
+          />
         </div>
       </div>
 

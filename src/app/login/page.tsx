@@ -20,6 +20,24 @@ function pickFirst(value?: string | string[]) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+function normalizeAuthPageError(value?: string | string[]) {
+  const message = pickFirst(value);
+  if (!message) return null;
+
+  const lowerMessage = message.toLowerCase();
+  if (
+    lowerMessage.includes("fetch failed") ||
+    lowerMessage.includes("failed to fetch") ||
+    lowerMessage.includes("network") ||
+    lowerMessage.includes("dns") ||
+    lowerMessage.includes("unreachable")
+  ) {
+    return "Authentication service is unreachable right now. Please check the Supabase project URL in your environment settings.";
+  }
+
+  return message;
+}
+
 export default async function LoginPage({
   searchParams,
 }: {
@@ -40,7 +58,7 @@ export default async function LoginPage({
     <AuthScreen
       mode="login"
       nextPath={sanitizeNextPath(pickFirst(params.next))}
-      initialError={pickFirst(params.error) || null}
+      initialError={normalizeAuthPageError(params.error)}
       socialAuthEnabled={isSupabaseAuthEnabled()}
       ssoEnabled={isSsoEnabled()}
       focusSso={pickFirst(params.focus) === "sso"}

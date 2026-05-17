@@ -25,6 +25,7 @@
 *.pem
 /data
 .claude/
+.codex/skills/
 
 # debug
 npm-debug.log*

@@ -2,43 +2,29 @@ import Link from "next/link";
 import BrandMark from "@/components/BrandMark";
 
 /* LOGIC EXPLAINED:
-The footer copy is rewritten from generic AI marketing to operational product
-language, per audit recommendation. The tagline, status indicator, and
-bottom-bar text now reflect system-level identity.
+The footer has been simplified to remove bulky pages and only include essential navigation,
+maintaining a clean, premium operating-system aesthetic.
 */
 
 const footerLinks = {
   product: [
     { label: "Pricing", href: "/pricing" },
     { label: "Integrations", href: "/integrations" },
-    { label: "Templates", href: "/templates" },
-    { label: "How Credits Work", href: "/how-credits-work" },
     { label: "Status", href: "/status" },
-    { label: "Blueprints", href: "/why-us" },
-  ],
-  solutions: [
-    { label: "For Startups", href: "/solutions/startups" },
-    { label: "For Operations", href: "/solutions/operations" },
-    { label: "For Agencies", href: "/solutions/agencies" },
-    { label: "For Support", href: "/solutions/support" },
   ],
   resources: [
     { label: "Documentation", href: "/docs" },
-    { label: "Blog", href: "/blog" },
-    { label: "Changelog", href: "/changelog" },
     { label: "Let's Talk", href: "/lets-talk" },
-    { label: "Security", href: "/security" },
   ],
   legal: [
-    { label: "Privacy Policy", href: "/privacy" },
-    { label: "Terms of Service", href: "/terms" },
+    { label: "Privacy", href: "/privacy" },
+    { label: "Terms", href: "/terms" },
   ],
   social: [
     { label: "X (Twitter)", href: "https://x.com/automatecraft", external: true },
     { label: "LinkedIn", href: "https://linkedin.com/company/automatecraft", external: true },
-    { label: "hello@automatecraft.ai", href: "mailto:hello@automatecraft.ai" },
   ],
-};
+} satisfies Record<string, Array<{ label: string; href: string; external?: boolean }>>;
 
 export default function Footer() {
   return (
@@ -47,8 +33,8 @@ export default function Footer() {
       <div className="h-px w-full bg-gradient-to-r from-transparent via-accent/15 to-transparent" />
       <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 h-32 w-96 rounded-full bg-accent/[0.03] blur-[60px]" />
 
-      <div className="site-container py-20">
-        <div className="grid gap-14 md:grid-cols-[1.2fr_0.6fr_0.6fr_0.6fr_0.5fr]">
+      <div className="site-container py-16">
+        <div className="grid gap-14 md:grid-cols-[2fr_1fr_1fr_1fr]">
           {/* Brand */}
           <div className="max-w-xs">
             <BrandMark compact={false} showName />
@@ -77,22 +63,6 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Solutions */}
-          <div>
-            <h4 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/30">
-              Solutions
-            </h4>
-            <ul className="mt-4 space-y-2.5 text-sm text-white/50">
-              {footerLinks.solutions.map((link) => (
-                <li key={link.href}>
-                  <Link href={link.href} className="footer-link transition-colors duration-200 hover:text-white/80">
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-
           {/* Resources */}
           <div>
             <h4 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/30">
@@ -109,7 +79,7 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Legal + Social */}
+          {/* Legal & Social */}
           <div>
             <h4 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/30">
               Legal
@@ -130,15 +100,9 @@ export default function Footer() {
             <ul className="mt-4 space-y-2.5 text-sm text-white/50">
               {footerLinks.social.map((link) => (
                 <li key={link.href}>
-                  {"external" in link ? (
-                    <a href={link.href} target="_blank" rel="noreferrer" className="footer-link transition-colors duration-200 hover:text-white/80">
-                      {link.label}
-                    </a>
-                  ) : (
-                    <a href={link.href} className="footer-link transition-colors duration-200 hover:text-white/80">
-                      {link.label}
-                    </a>
-                  )}
+                  <a href={link.href} target={link.external ? "_blank" : undefined} rel={link.external ? "noreferrer" : undefined} className="footer-link transition-colors duration-200 hover:text-white/80">
+                    {link.label}
+                  </a>
                 </li>
               ))}
             </ul>
@@ -146,7 +110,7 @@ export default function Footer() {
         </div>
 
         {/* Infrastructure badges */}
-        <div className="mt-14 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 border-t border-white/[0.04] pt-7 text-[11px] text-white/15">
+        <div className="mt-14 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/[0.04] pt-7 text-[11px] text-white/15">
           <a href="https://github.com/n8n-io/n8n" target="_blank" rel="noreferrer" className="hover:text-white/30 transition-colors">Powered by n8n</a>
           <span className="text-white/8">·</span>
           <a href="https://github.com/supabase/supabase" target="_blank" rel="noreferrer" className="hover:text-white/30 transition-colors">Secured by Supabase</a>
@@ -160,8 +124,6 @@ export default function Footer() {
           <p className="text-white/20">Automation infrastructure for modern teams.</p>
         </div>
       </div>
-
-
     </footer>
   );
 }

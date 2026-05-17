@@ -26,8 +26,8 @@
   --ease-enter: cubic-bezier(0.0, 0.0, 0.2, 1);
   --ease-exit: cubic-bezier(0.4, 0.0, 1, 1);
   --ease-move: cubic-bezier(0.4, 0.0, 0.2, 1);
-  --font-sans: var(--font-inter);
-  --font-mono: var(--font-jetbrains, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  --font-sans: var(--font-outfit);
+  --font-mono: var(--font-fira-code, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
 
   /* ── Typographic Scale (8 sizes) ── */
   --text-2xs: 0.625rem;   /* 10px */
@@ -171,6 +171,19 @@ button, a, [role="button"] {
   transition-property: color, background-color, border-color, box-shadow, opacity;
   transition-duration: 0.2s;
   transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+button:not(:disabled),
+a[href],
+[role="button"] {
+  cursor: pointer;
+}
+
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.72);
+  outline-offset: 3px;
 }
 
 input, select, textarea {
@@ -377,6 +390,21 @@ That keeps the UI majorly black while making the workspace feel richer.
     radial-gradient(ellipse at 84% 14%, rgba(59, 130, 246, 0.045) 0%, transparent 28%),
     radial-gradient(ellipse at 50% 100%, rgba(255, 255, 255, 0.025) 0%, transparent 34%),
     linear-gradient(180deg, #0b0d10 0%, var(--color-chat-mid) 36%, var(--color-chat-base) 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 .chat-header-surface {
@@ -1005,6 +1033,22 @@ That keeps the UI majorly black while making the workspace feel richer.
   animation: flowDown 1.5s infinite;
 }
 
+/* ── Elite Custom Scrollbar ── */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
 /* -- Build Page Utility Classes -- */
 .build-glass-panel {
   background: rgba(17, 17, 24, 0.8);
@@ -1052,4 +1096,46 @@ That keeps the UI majorly black while making the workspace feel richer.
 
 .marquee-track:hover {
   animation-play-state: paused;
+}
+
+/* ── Streaming Cursor Blink ── */
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ── Custom Scrollbar ── */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.06) transparent;
+}
+
+/* ── Chat Scroll Shadows (Task 6.1) ── */
+.chat-scrollable {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0px,
+    black 12px,
+    black calc(100% - 12px),
+    transparent 100%
+  );
+}
+
+/* ── Composer Surface Polish (Task 6.3 + 6.4) ── */
+.chat-composer-surface {
+  position: relative;
+  transition: border-color 200ms ease-out, box-shadow 300ms ease-out, background-color 150ms ease-out;
 }

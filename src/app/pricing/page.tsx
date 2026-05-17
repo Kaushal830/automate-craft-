@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Brain, Check, ChevronDown, Sparkles, X, BadgeCheck, Lock, CircleDollarSign } from "lucide-react";
+import { Brain, Check, ChevronDown, Sparkles, X, BadgeCheck, Lock, CircleDollarSign, Headphones } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import PageIntro from "@/components/PageIntro";
@@ -559,7 +559,7 @@ export default function PricingPage() {
             </div>
           </Link>
         </div>
-        <div className="mt-16 flex flex-col items-center justify-center gap-6 border-t border-white/[0.06] pt-12 text-center text-sm font-medium tracking-wide text-white/30 sm:flex-row sm:gap-12">
+        <div className="mt-16 grid gap-3 border-t border-white/[0.06] pt-12 text-sm font-medium tracking-wide text-white/42 sm:grid-cols-2 lg:grid-cols-4">
           <div className="flex items-center gap-3">
             <BadgeCheck className="h-5 w-5 text-accent/60" />
             Secure Checkout
@@ -570,7 +570,11 @@ export default function PricingPage() {
           </div>
           <div className="flex items-center gap-3">
             <CircleDollarSign className="h-5 w-5 text-accent/60" />
-            Cancel Anytime
+            Fair Credit Top-ups
+          </div>
+          <div className="flex items-center gap-3">
+            <Headphones className="h-5 w-5 text-accent/60" />
+            Human Support
           </div>
         </div>
 

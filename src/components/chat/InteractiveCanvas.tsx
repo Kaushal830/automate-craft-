@@ -1,8 +1,21 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2, Loader2, Workflow, Zap, Send, Terminal, Play, Rocket, PanelRightClose, Link as LinkIcon, Activity } from "lucide-react";
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  MarkerType,
+  Handle,
+  Position,
+  useNodesState,
+  useEdgesState,
+  type Node as FlowNodeType,
+  type Edge as FlowEdgeType,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 
 function useReducedMotion() {
   const [reduced, setReduced] = useState(false);
@@ -36,19 +49,10 @@ interface InteractiveCanvasProps {
   onClose: () => void;
 }
 
-export function InteractiveCanvas({
-  nodes,
-  onTest,
-  onDeploy,
-  isDeploying,
-  hasDeployed,
-  isTesting,
-  hasTested,
-  isOpen,
-  onClose,
-}: InteractiveCanvasProps) {
-  const reducedMotion = useReducedMotion();
-
+// Custom Node for React Flow
+const CustomNode = ({ data }: any) => {
+  const { node, isActive, isCompleted, isTestExecuting, isTestDone, reducedMotion } = data;
+  
   const getIcon = (type: FlowNode["type"]) => {
     switch (type) {
       case "trigger": return <Zap className="h-4 w-4" />;
@@ -85,9 +89,100 @@ export function InteractiveCanvas({
     }
   };
 
-  /* ── Test mode: step-by-step execution flow ── */
-  const [testPhase, setTestPhase] = useState<number>(-1); // which node index is "executing"
+  return (
+    <div className="relative w-[320px]">
+      <Handle type="target" position={Position.Top} className="opacity-0" />
+      
+      {/* Active / Test executing glow */}
+      {(isActive || isTestExecuting) && !reducedMotion && (
+        <motion.div
+          className="absolute -inset-1.5 rounded-2xl pointer-events-none"
+          style={{ background: `radial-gradient(ellipse at center, ${getGlowColor(node.type)}, transparent 70%)` }}
+          animate={{
+            opacity: [0.5, 1, 0.5],
+            scale: [0.98, 1.02, 0.98],
+          }}
+          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+        />
+      )}
+      
+      <div className={`node-card relative z-10 flex items-center gap-4 rounded-2xl border px-5 py-4 transition-all duration-300 hover:scale-[1.02] hover:-translate-y-[2px] ${
+        isActive || isTestExecuting
+          ? "border-blue-500/40 bg-gradient-to-br from-[#0f1520] via-[#0d1018] to-[#0a0c10] shadow-[0_0_30px_rgba(59,130,246,0.25),inset_0_1px_0_rgba(255,255,255,0.05)]"
+          : isCompleted || isTestDone
+            ? "border-white/[0.06] bg-gradient-to-br from-[#0f0f11] to-[#0a0a0c] shadow-[0_6px_24px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.03)]"
+            : "border-white/[0.04] bg-[#0a0a0a]"
+      }`}>
+        <div className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${getTypeColor(node.type)} ring-1 shadow-[0_2px_8px_rgba(0,0,0,0.2)] transition-all`}>
+          {isActive || isTestExecuting ? (
+            <div className="relative">
+              <Loader2 className="h-4 w-4 animate-spin" style={{ color: getAccentHex(node.type) }} />
+              {!reducedMotion && (
+                <motion.div
+                  className="absolute -inset-3 rounded-xl"
+                  style={{ border: `1px solid ${getAccentHex(node.type)}30` }}
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
+                />
+              )}
+            </div>
+          ) : getIcon(node.type)}
+        </div>
 
+        <div className="flex-1 min-w-0">
+          <p className={`text-[10px] font-bold uppercase tracking-[0.15em] mb-0.5 ${
+            isActive || isTestExecuting ? "text-blue-400/80"
+            : isTestDone ? "text-emerald-400/60"
+            : "text-white/20"
+          }`}>
+            {node.type}
+          </p>
+          <p className={`text-[14px] font-semibold truncate ${isCompleted || isTestDone ? "text-white/80" : "text-white/90"}`}>
+            {node.label}
+          </p>
+          {node.detail && (
+            <p className="text-[12px] text-white/30 mt-0.5 truncate">{node.detail}</p>
+          )}
+        </div>
+
+        <div className="shrink-0">
+          {(isCompleted || isTestDone) && (
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/15">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+            </div>
+          )}
+          {(isActive || isTestExecuting) && (
+            <div className="relative flex h-7 w-7 items-center justify-center">
+              <div
+                className="h-2.5 w-2.5 rounded-full"
+                style={{ backgroundColor: getAccentHex(node.type), boxShadow: `0 0 12px ${getAccentHex(node.type)}cc` }}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+      <Handle type="source" position={Position.Bottom} className="opacity-0" />
+    </div>
+  );
+};
+
+const nodeTypes = { custom: CustomNode };
+
+export function InteractiveCanvas({
+  nodes,
+  onTest,
+  onDeploy,
+  isDeploying,
+  hasDeployed,
+  isTesting,
+  hasTested,
+  isOpen,
+  onClose,
+}: InteractiveCanvasProps) {
+  const reducedMotion = useReducedMotion();
+
+  /* ── Test mode: step-by-step execution flow ── */
+  const [testPhase, setTestPhase] = useState<number>(-1);
   const [logs, setLogs] = useState<{ id: string; text: string; status: "info" | "success" | "error" }[]>([]);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -96,14 +191,11 @@ export function InteractiveCanvas({
       setTestPhase(0);
       const timeoutIds: NodeJS.Timeout[] = [];
 
-      // Phase through each node
       nodes.forEach((_, i) => {
         timeoutIds.push(setTimeout(() => setTestPhase(i), i * 700 + 200));
       });
-      // Mark complete after last
       timeoutIds.push(setTimeout(() => setTestPhase(nodes.length), nodes.length * 700 + 400));
 
-      // Execution logs
       const steps = [
         { t: "Initializing test environment...", delay: 100, status: "info" as const },
         { t: "Executing Trigger: Form Submission (Simulated)...", delay: 600, status: "success" as const },
@@ -133,7 +225,6 @@ export function InteractiveCanvas({
     }
   }, [logs]);
 
-  /* ── Build animation: stagger node reveals ── */
   const [revealedNodes, setRevealedNodes] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -148,10 +239,53 @@ export function InteractiveCanvas({
     return () => timeouts.forEach(clearTimeout);
   }, [nodes, reducedMotion]);
 
-  /* LOGIC EXPLAINED:
-  The preview panel should feel like part of the same workspace, not a second
-  unrelated black layer. These shared chat surface classes align the preview
-  shell, header, and footer with the same blue-black graphite palette. */
+  // Map our workflow nodes to React Flow nodes
+  const rfNodes: FlowNodeType[] = useMemo(() => {
+    return nodes
+      .filter((n, i) => revealedNodes.has(n.id) || isTesting || hasTested || hasDeployed || n.status !== "pending")
+      .map((node, index) => ({
+        id: node.id,
+        type: "custom",
+        position: { x: 0, y: index * 120 }, // Vertical layout spacing
+        data: {
+          node,
+          isActive: node.status === "active",
+          isCompleted: node.status === "completed",
+          isTestExecuting: isTesting && testPhase === index,
+          isTestDone: isTesting && testPhase > index,
+          reducedMotion,
+        },
+      }));
+  }, [nodes, revealedNodes, isTesting, hasTested, hasDeployed, testPhase, reducedMotion]);
+
+  // Generate edges between sequential nodes
+  const rfEdges: FlowEdgeType[] = useMemo(() => {
+    const edges: FlowEdgeType[] = [];
+    for (let i = 0; i < rfNodes.length - 1; i++) {
+      const source = rfNodes[i].id;
+      const target = rfNodes[i + 1].id;
+      const isCompleted = rfNodes[i].data.isCompleted || rfNodes[i].data.isTestDone;
+      const isActive = rfNodes[i].data.isActive || rfNodes[i].data.isTestExecuting;
+      
+      edges.push({
+        id: `e-${source}-${target}`,
+        source,
+        target,
+        type: "smoothstep",
+        animated: !!isActive,
+        style: {
+          stroke: isCompleted ? "rgba(52,211,153,0.5)" : isActive ? "rgba(59,130,246,0.8)" : "rgba(255,255,255,0.1)",
+          strokeWidth: isCompleted || isActive ? 2 : 1,
+        },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: isCompleted ? "rgba(52,211,153,0.5)" : isActive ? "rgba(59,130,246,0.8)" : "rgba(255,255,255,0.1)",
+        },
+      });
+    }
+    return edges;
+  }, [rfNodes]);
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -166,12 +300,12 @@ export function InteractiveCanvas({
           <div className="flex h-full w-full flex-col">
 
             {/* Panel Header */}
-            <div className="chat-header-surface flex h-[52px] shrink-0 items-center justify-between border-b px-5">
+            <div className="chat-header-surface flex h-[52px] shrink-0 items-center justify-between border-b px-5 z-20">
               <div className="flex items-center gap-2.5">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-white/[0.06] to-white/[0.02] shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.06)] ring-1 ring-white/[0.06]">
                   <Workflow className="h-3.5 w-3.5 text-white/40" />
                 </div>
-                <span className="text-[13px] font-semibold text-white/55">Workflow Preview</span>
+                <span className="text-[13px] font-semibold text-white/55">Interactive Workflow Preview</span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -183,13 +317,6 @@ export function InteractiveCanvas({
                   >
                     <div className="relative">
                       <div className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" />
-                      {!reducedMotion && (
-                        <motion.div
-                          className="absolute -inset-1 rounded-full border border-emerald-400/30"
-                          animate={{ scale: [1, 1.8, 1], opacity: [0.4, 0, 0.4] }}
-                          transition={{ duration: 2, repeat: Infinity }}
-                        />
-                      )}
                     </div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Live</span>
                   </motion.div>
@@ -204,197 +331,35 @@ export function InteractiveCanvas({
               </div>
             </div>
 
-            {/* Node Graph */}
-            <div className="flex-1 overflow-y-auto px-5 py-8 relative custom-scrollbar">
-              {/* Dot grid background */}
-              <div className="absolute inset-0 pointer-events-none opacity-30" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.03) 1px, transparent 0)", backgroundSize: "20px 20px" }} />
-              {/* Center radial glow */}
-              <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,rgba(59,130,246,0.04)_0%,transparent_55%)]" />
-              {/* Top-left accent wash */}
-              <div className="absolute -top-20 -left-20 h-40 w-40 rounded-full bg-accent/[0.04] blur-[60px] pointer-events-none" />
+            {/* Interactive React Flow Graph */}
+            <div className="flex-1 relative">
+              <ReactFlow
+                nodes={rfNodes}
+                edges={rfEdges}
+                nodeTypes={nodeTypes}
+                fitView
+                fitViewOptions={{ padding: 0.2 }}
+                minZoom={0.5}
+                maxZoom={1.5}
+                className="bg-transparent"
+                proOptions={{ hideAttribution: true }}
+              >
+                <Background color="rgba(255,255,255,0.05)" gap={16} size={1} />
+                <Controls showInteractive={false} className="opacity-50 hover:opacity-100 transition-opacity" />
+              </ReactFlow>
 
-              <div className="relative flex flex-col items-center max-w-sm mx-auto">
-                <AnimatePresence>
-                  {nodes.map((node, index) => {
-                    // Hide truly pending nodes that haven't been revealed
-                    if (node.status === "pending" && !revealedNodes.has(node.id) && !isTesting && !hasTested && !hasDeployed) {
-                      return null;
-                    }
-
-                    const isLastVisible = index === nodes.length - 1 || (nodes[index + 1]?.status === "pending" && !revealedNodes.has(nodes[index + 1]?.id));
-                    const isActive = node.status === "active";
-                    const isCompleted = node.status === "completed";
-                    const typeColor = getTypeColor(node.type);
-                    const isRevealed = revealedNodes.has(node.id);
-
-                    // Test mode: highlight currently executing step
-                    const isTestExecuting = isTesting && testPhase === index;
-                    const isTestDone = isTesting && testPhase > index;
-
-                    return (
-                      <React.Fragment key={node.id}>
-                        <motion.div
-                          initial={reducedMotion ? false : { opacity: 0, y: 20, scale: 0.9 }}
-                          animate={{
-                            opacity: isRevealed || isActive || isCompleted ? 1 : 0.4,
-                            y: 0,
-                            scale: 1,
-                          }}
-                          transition={{
-                            duration: 0.45,
-                            delay: reducedMotion ? 0 : index * 0.15,
-                            ease: [0.22, 1, 0.36, 1],
-                          }}
-                          className="w-full group"
-                        >
-                          {/* 3D Card with dynamic glow */}
-                          <div className="relative">
-                            {/* Active / Test executing glow */}
-                            {(isActive || isTestExecuting) && !reducedMotion && (
-                              <motion.div
-                                className="absolute -inset-1.5 rounded-2xl pointer-events-none"
-                                style={{ background: `radial-gradient(ellipse at center, ${getGlowColor(node.type)}, transparent 70%)` }}
-                                animate={{
-                                  opacity: [0.5, 1, 0.5],
-                                  scale: [0.98, 1.02, 0.98],
-                                }}
-                                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                              />
-                            )}
-                            {/* Static glow for reduced motion */}
-                            {(isActive || isTestExecuting) && reducedMotion && (
-                              <div
-                                className="absolute -inset-1.5 rounded-2xl pointer-events-none"
-                                style={{ background: `radial-gradient(ellipse at center, ${getGlowColor(node.type)}, transparent 70%)` }}
-                              />
-                            )}
-
-                            <div className={`node-card relative z-10 flex items-center gap-4 rounded-2xl border px-5 py-4 transition-all duration-300 hover:scale-[1.02] hover:-translate-y-[2px] ${
-                              isActive || isTestExecuting
-                                ? "border-blue-500/40 bg-gradient-to-br from-[#0f1520] via-[#0d1018] to-[#0a0c10] shadow-[0_0_30px_rgba(59,130,246,0.25),inset_0_1px_0_rgba(255,255,255,0.05)]"
-                                : isCompleted || isTestDone
-                                  ? "border-white/[0.06] bg-gradient-to-br from-[#0f0f11] to-[#0a0a0c] shadow-[0_6px_24px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.03)]"
-                                  : "border-white/[0.04] bg-[#0a0a0a]"
-                            }`}>
-                              {/* Node icon with type-specific gradient + active effects */}
-                              <div className={`relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${typeColor} ring-1 shadow-[0_2px_8px_rgba(0,0,0,0.2)] transition-all`}>
-                                {isActive || isTestExecuting ? (
-                                  <div className="relative">
-                                    <Loader2 className="h-4 w-4 animate-spin" style={{ color: getAccentHex(node.type) }} />
-                                    {!reducedMotion && (
-                                      <motion.div
-                                        className="absolute -inset-3 rounded-xl"
-                                        style={{ border: `1px solid ${getAccentHex(node.type)}30` }}
-                                        animate={{ rotate: 360 }}
-                                        transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
-                                      />
-                                    )}
-                                  </div>
-                                ) : getIcon(node.type)}
-                              </div>
-
-                              <div className="flex-1 min-w-0">
-                                <p className={`text-[10px] font-bold uppercase tracking-[0.15em] mb-0.5 ${
-                                  isActive || isTestExecuting ? "text-blue-400/80"
-                                  : isTestDone ? "text-emerald-400/60"
-                                  : "text-white/20"
-                                }`}>
-                                  {node.type}
-                                </p>
-                                <p className={`text-[14px] font-semibold truncate ${isCompleted || isTestDone ? "text-white/80" : "text-white/90"}`}>
-                                  {node.label}
-                                </p>
-                                {node.detail && (
-                                  <p className="text-[12px] text-white/30 mt-0.5 truncate">{node.detail}</p>
-                                )}
-                              </div>
-
-                              {/* Status indicator */}
-                              <div className="shrink-0">
-                                {(isCompleted || isTestDone) && (
-                                  <motion.div
-                                    initial={reducedMotion ? false : { scale: 0 }}
-                                    animate={{ scale: 1 }}
-                                    transition={{ type: "spring", stiffness: 400, damping: 15 }}
-                                  >
-                                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/15">
-                                      <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-                                    </div>
-                                  </motion.div>
-                                )}
-                                {(isActive || isTestExecuting) && (
-                                  <div className="relative flex h-7 w-7 items-center justify-center">
-                                    <div
-                                      className="h-2.5 w-2.5 rounded-full"
-                                      style={{
-                                        backgroundColor: getAccentHex(node.type),
-                                        boxShadow: `0 0 12px ${getAccentHex(node.type)}cc`
-                                      }}
-                                    />
-                                    {!reducedMotion && (
-                                      <motion.div
-                                        className="absolute inset-0 rounded-full"
-                                        style={{ border: `1px solid ${getAccentHex(node.type)}50` }}
-                                        animate={{ scale: [1, 1.6, 1], opacity: [0.5, 0, 0.5] }}
-                                        transition={{ duration: 1.5, repeat: Infinity }}
-                                      />
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </motion.div>
-
-                        {/* ── Animated Connector Line ── */}
-                        {!isLastVisible && (
-                          <div className="relative h-12 w-px my-1 overflow-hidden z-0">
-                            {/* Static line */}
-                            <div className={`absolute inset-0 transition-all duration-500 ${
-                              isCompleted || isTestDone
-                                ? "bg-gradient-to-b from-emerald-400/25 to-emerald-400/10"
-                                : "bg-gradient-to-b from-white/10 to-white/[0.03]"
-                            }`} />
-
-                            {/* Animated flowing particle (Data packet) */}
-                            {!reducedMotion && (isActive || isTestExecuting || isTesting || (nodes[index + 1]?.status === "active")) && (
-                              <motion.div
-                                className="absolute top-0 left-[-1.5px] h-3 w-[4px] rounded-full bg-accent blur-[1px] shadow-[0_0_10px_rgba(59,130,246,0.8)]"
-                                animate={{ top: ["-10%", "110%"], opacity: [0, 1, 0] }}
-                                transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
-                              />
-                            )}
-
-                            {/* Completed state: soft glow line */}
-                            {(isCompleted || isTestDone) && !reducedMotion && (
-                              <motion.div
-                                className="absolute inset-0 rounded-full"
-                                style={{ background: "linear-gradient(to bottom, rgba(52,211,153,0.3), rgba(52,211,153,0.05))" }}
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: [0.3, 0.7, 0.3] }}
-                                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-                              />
-                            )}
-                          </div>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </AnimatePresence>
-              </div>
-
-              {/* ── Execution Logs ── */}
+              {/* ── Execution Logs Overlay ── */}
               <AnimatePresence>
                 {(isTesting || hasTested) && (
                   <motion.div
                     initial={reducedMotion ? false : { opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
-                    className="chat-elevated-surface mt-8 overflow-hidden rounded-2xl border"
+                    className="absolute bottom-4 left-4 right-4 z-10 chat-elevated-surface overflow-hidden rounded-2xl border shadow-2xl"
                     role="log"
                     aria-label="Execution logs"
                   >
-                    <div className="px-4 py-3 border-b border-white/[0.04] flex items-center gap-2.5">
+                    <div className="px-4 py-3 border-b border-white/[0.04] flex items-center gap-2.5 bg-black/40 backdrop-blur-md">
                       <div className="flex h-6 w-6 items-center justify-center rounded-md bg-white/[0.04] ring-1 ring-white/[0.06]">
                         <Terminal className="h-3 w-3 text-white/35" />
                       </div>
@@ -413,7 +378,7 @@ export function InteractiveCanvas({
                       )}
                     </div>
 
-                    <div className="p-4 flex flex-col gap-1.5 max-h-[200px] overflow-y-auto font-mono text-[11px] custom-scrollbar">
+                    <div className="p-4 flex flex-col gap-1.5 max-h-[150px] overflow-y-auto font-mono text-[11px] custom-scrollbar bg-black/60 backdrop-blur-md">
                       {logs.length === 0 && <span className="text-white/12">Waiting for payload...</span>}
                       {logs.map((log, logIdx) => (
                         <motion.div
@@ -423,7 +388,6 @@ export function InteractiveCanvas({
                           transition={{ duration: 0.15 }}
                           className="flex items-start gap-2 py-0.5"
                         >
-                          {/* Step number */}
                           <span className="text-white/10 shrink-0 mt-[1px] w-4 text-right tabular-nums">{logIdx + 1}</span>
                           <span className="text-white/15 shrink-0 mt-[1px] select-none">{"›"}</span>
                           <span className={
@@ -442,8 +406,7 @@ export function InteractiveCanvas({
             </div>
 
             {/* Panel Footer — Status + Test / Deploy */}
-            <div className="chat-header-surface shrink-0 border-t border-white/[0.04]">
-              {/* Mini status bar */}
+            <div className="chat-header-surface shrink-0 border-t border-white/[0.04] z-20">
               <div className="flex items-center gap-4 px-5 py-2.5 border-b border-white/[0.03] text-[11px]">
                 <div className="flex items-center gap-1.5 text-white/25">
                   <div className={`h-1.5 w-1.5 rounded-full ${
@@ -458,35 +421,27 @@ export function InteractiveCanvas({
               </div>
 
               <div className="px-5 py-4 flex items-center gap-3">
-              {/* Test button */}
-              <button
-                onClick={onTest}
-                disabled={isTesting || hasTested || isDeploying || hasDeployed}
-                aria-label="Run test"
-                className="group relative flex items-center gap-2 rounded-xl border border-white/[0.08] bg-gradient-to-b from-white/[0.05] to-white/[0.02] px-5 py-3 text-[13px] font-semibold text-white transition-all duration-200 hover:border-white/[0.15] hover:shadow-[0_6px_20px_rgba(0,0,0,0.4)] hover:translate-y-[-1px] active:translate-y-[1px] disabled:opacity-25 disabled:cursor-not-allowed shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.05)]"
-              >
-                {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5 text-white/50" />}
-                Test
-              </button>
+                <button
+                  onClick={onTest}
+                  disabled={isTesting || hasTested || isDeploying || hasDeployed}
+                  className="group relative flex items-center gap-2 rounded-xl border border-white/[0.08] bg-gradient-to-b from-white/[0.05] to-white/[0.02] px-5 py-3 text-[13px] font-semibold text-white transition-all duration-200 hover:border-white/[0.15] hover:shadow-[0_6px_20px_rgba(0,0,0,0.4)] hover:translate-y-[-1px] active:translate-y-[1px] disabled:opacity-25 disabled:cursor-not-allowed shadow-[0_2px_8px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.05)]"
+                >
+                  {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5 text-white/50" />}
+                  Test
+                </button>
 
-              {/* Deploy button */}
-              <button
-                onClick={onDeploy}
-                disabled={!hasTested || isDeploying || hasDeployed}
-                aria-label="Deploy automation"
-                className={`group relative flex-1 flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-[13px] font-bold transition-all duration-200 disabled:opacity-25 disabled:cursor-not-allowed disabled:translate-y-0 overflow-hidden ${
-                  hasDeployed
-                    ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shadow-[0_0_20px_rgba(52,211,153,0.1)]"
-                    : "bg-gradient-to-r from-accent to-blue-600 text-white shadow-[0_4px_20px_rgba(59,130,246,0.3),0_1px_0_rgba(255,255,255,0.15)_inset] hover:shadow-[0_8px_30px_rgba(59,130,246,0.4)] hover:translate-y-[-1px] active:translate-y-[1px]"
-                }`}
-              >
-                {/* Shine */}
-                {!hasDeployed && !reducedMotion && (
-                  <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-transparent via-white/[0.08] to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
-                )}
-                {isDeploying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Rocket className="h-3.5 w-3.5" />}
-                {hasDeployed ? "Deployed ✓" : "Deploy"}
-              </button>
+                <button
+                  onClick={onDeploy}
+                  disabled={!hasTested || isDeploying || hasDeployed}
+                  className={`group relative flex-1 flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-[13px] font-bold transition-all duration-200 disabled:opacity-25 disabled:cursor-not-allowed overflow-hidden ${
+                    hasDeployed
+                      ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 shadow-[0_0_20px_rgba(52,211,153,0.1)]"
+                      : "bg-gradient-to-r from-accent to-blue-600 text-white shadow-[0_4px_20px_rgba(59,130,246,0.3),0_1px_0_rgba(255,255,255,0.15)_inset] hover:shadow-[0_8px_30px_rgba(59,130,246,0.4)] hover:translate-y-[-1px] active:translate-y-[1px]"
+                  }`}
+                >
+                  {isDeploying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Rocket className="h-3.5 w-3.5" />}
+                  {hasDeployed ? "Deployed ✓" : "Deploy"}
+                </button>
               </div>
             </div>
           </div>

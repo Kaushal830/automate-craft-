@@ -14,6 +14,10 @@ import {
   CheckCircle2,
   Loader2,
 } from "lucide-react";
+import {
+  getSupabaseBrowserClient,
+  isSupabaseBrowserConfigured,
+} from "@/lib/supabase-browser";
 
 type AuthScreenProps = {
   mode: "login" | "signup";
@@ -50,6 +54,53 @@ function MailIcon() {
 import dynamic from "next/dynamic";
 const LoginDemoPlayer = dynamic(() => import("@/components/auth/LoginDemoPlayer"), { ssr: false });
 
+/* LOGIC EXPLAINED:
+The auth page was exposing raw network errors like "fetch failed", and Google
+sign-in used a server-generated redirect that could send users to a dead
+Supabase URL. This frontend-only guard turns those failures into a clear message
+and only opens Google after the configured Supabase Auth project is reachable.
+*/
+function normalizeAuthError(err: unknown) {
+  const message =
+    err instanceof Error
+      ? err.message
+      : typeof err === "string"
+        ? err
+        : "Authentication failed.";
+  const lowerMessage = message.toLowerCase();
+
+  if (
+    lowerMessage.includes("fetch failed") ||
+    lowerMessage.includes("failed to fetch") ||
+    lowerMessage.includes("network") ||
+    lowerMessage.includes("dns") ||
+    lowerMessage.includes("unreachable")
+  ) {
+    return "Authentication service is unreachable right now. Please check the Supabase project URL in your environment settings.";
+  }
+
+  return message;
+}
+
+async function assertSupabaseAuthReachable() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
+
+  if (!supabaseUrl) {
+    throw new Error("Google sign-in is not configured yet.");
+  }
+
+  try {
+    await fetch(`${supabaseUrl}/auth/v1/health`, {
+      cache: "no-store",
+      mode: "no-cors",
+    });
+  } catch {
+    throw new Error(
+      "Authentication service is unreachable right now. Please check the Supabase project URL in your environment settings.",
+    );
+  }
+}
+
 
 /* ═══════════════════════════════════════════════
    MAIN AUTH SCREEN COMPONENT
@@ -72,7 +123,10 @@ export default function AuthScreen({
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(initialError);
+  const [socialLoading, setSocialLoading] = useState(false);
+  const [error, setError] = useState<string | null>(
+    initialError ? normalizeAuthError(initialError) : null,
+  );
 
   const [magicLoading, setMagicLoading] = useState(false);
   const [magicSent, setMagicSent] = useState(false);
@@ -82,7 +136,55 @@ export default function AuthScreen({
   const [resetSent, setResetSent] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
 
-  const googleHref = `/api/auth/oauth?provider=google&next=${encodeURIComponent(nextPath)}`;
+  const googleHref = "#";
+
+  const handleGoogleAuth = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+
+    if (!socialAuthEnabled || socialLoading) return;
+
+    setError(null);
+    setMagicError(null);
+    setResetError(null);
+    setSocialLoading(true);
+
+    try {
+      if (!isSupabaseBrowserConfigured()) {
+        throw new Error("Google sign-in is not configured yet.");
+      }
+
+      const supabase = getSupabaseBrowserClient();
+      if (!supabase) {
+        throw new Error("Google sign-in is not configured yet.");
+      }
+
+      await assertSupabaseAuthReachable();
+
+      const callbackUrl = new URL("/auth/callback", window.location.origin);
+      callbackUrl.searchParams.set("next", nextPath);
+
+      const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: callbackUrl.toString(),
+          skipBrowserRedirect: true,
+        },
+      });
+
+      if (oauthError) {
+        throw oauthError;
+      }
+
+      if (!data.url) {
+        throw new Error("Could not start Google sign-in.");
+      }
+
+      window.location.assign(data.url);
+    } catch (err) {
+      setError(normalizeAuthError(err));
+      setSocialLoading(false);
+    }
+  };
 
   /* ─── Password submit ─── */
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -96,7 +198,7 @@ export default function AuthScreen({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(isSignup ? { name, email, password } : { email, password }),
       });
-      const json = (await res.json()) as {
+      const json = (await res.json().catch(() => ({}))) as {
         error?: string;
         user?: { onboarded: boolean };
         needsEmailVerification?: boolean;
@@ -117,7 +219,7 @@ export default function AuthScreen({
       router.push(finalPath);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Authentication failed.");
+      setError(normalizeAuthError(err));
     } finally {
       setLoading(false);
     }
@@ -134,11 +236,11 @@ export default function AuthScreen({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || "Could not send magic link.");
       setMagicSent(true);
     } catch (err) {
-      setMagicError(err instanceof Error ? err.message : "Could not send magic link.");
+      setMagicError(normalizeAuthError(err));
     } finally {
       setMagicLoading(false);
     }
@@ -155,17 +257,19 @@ export default function AuthScreen({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || "Could not send reset link.");
       setResetSent(true);
     } catch (err) {
-      setResetError(err instanceof Error ? err.message : "Could not send reset link.");
+      setResetError(normalizeAuthError(err));
     } finally {
       setResetLoading(false);
     }
   };
 
   const title = isSignup ? "Create your account" : "Welcome back";
+  const visibleError = error || magicError || resetError;
+  const displayError = visibleError ? normalizeAuthError(visibleError) : null;
 
   const inputCls =
     "h-[50px] w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-5 text-[0.875rem] text-white outline-none transition-all duration-200 placeholder:text-white/20 focus:border-[#3b82f6]/40 focus:bg-white/[0.05] focus:ring-2 focus:ring-[#3b82f6]/10";
@@ -222,14 +326,14 @@ export default function AuthScreen({
 
           {/* Error banner */}
           <AnimatePresence>
-            {(error || magicError || resetError) && (
+            {displayError && (
               <motion.div
                 initial={{ opacity: 0, height: 0, marginBottom: 0 }}
                 animate={{ opacity: 1, height: "auto", marginBottom: 16 }}
                 exit={{ opacity: 0, height: 0, marginBottom: 0 }}
                 className="overflow-hidden rounded-xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-center text-[0.825rem] font-medium text-red-400"
               >
-                {error || magicError || resetError}
+                {displayError}
               </motion.div>
             )}
           </AnimatePresence>
@@ -250,12 +354,13 @@ export default function AuthScreen({
                   <div className="space-y-3">
                     <a
                       href={socialAuthEnabled ? googleHref : undefined}
+                      onClick={handleGoogleAuth}
                       aria-disabled={!socialAuthEnabled}
                       id="google-signin-btn"
                       className={`${socialBtnCls} ${!socialAuthEnabled ? "cursor-not-allowed opacity-40" : ""}`}
                     >
-                      <GoogleIcon />
-                      Continue with Google
+                      {socialLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <GoogleIcon />}
+                      {socialLoading ? "Opening Google..." : "Continue with Google"}
                     </a>
 
                     <button
@@ -415,8 +520,9 @@ export default function AuthScreen({
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45, delay: 0.12 }}
             >
-              <a href={socialAuthEnabled ? googleHref : undefined} aria-disabled={!socialAuthEnabled} id="google-signup-btn" className={`${socialBtnCls} ${!socialAuthEnabled ? "cursor-not-allowed opacity-40" : ""}`}>
-                <GoogleIcon /> Continue with Google
+              <a href={socialAuthEnabled ? googleHref : undefined} onClick={handleGoogleAuth} aria-disabled={!socialAuthEnabled} id="google-signup-btn" className={`${socialBtnCls} ${!socialAuthEnabled ? "cursor-not-allowed opacity-40" : ""}`}>
+                {socialLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <GoogleIcon />}
+                {socialLoading ? "Opening Google..." : "Continue with Google"}
               </a>
 
               <div className="relative my-6">

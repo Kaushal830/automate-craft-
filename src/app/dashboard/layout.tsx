@@ -8,10 +8,8 @@ export default async function DashboardLayout({
   children: ReactNode;
 }) {
   /* LOGIC EXPLAINED:
-  The dashboard layout still protects authenticated routes, but the floating
-  credits button is now mounted globally from the root layout through a single
-  auth gate. That prevents duplicate button instances and keeps one condition
-  for the whole website.
+  Dashboard routes share one shell so navigation, user profile, and credits stay
+  consistent across projects, logs, apps, settings, and chat workspaces.
   */
   const user = await requireUser();
 

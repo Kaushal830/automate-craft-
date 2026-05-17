@@ -122,8 +122,17 @@ export function SystemStatusBar({ phase }: SystemStatusBarProps) {
   const Icon = config.icon;
   const isSpinning = phase === "building" || phase === "testing" || phase === "deploying";
 
-  // Don't render anything in idle state
-  if (phase === "idle") return null;
+  // Show subtle Ready indicator in idle state (Task 5.3)
+  if (phase === "idle") {
+    return (
+      <div className="flex items-center gap-1.5 rounded-lg px-2 py-1">
+        <div className="h-1.5 w-1.5 rounded-full bg-emerald-500/50 shadow-[0_0_4px_rgba(52,211,153,0.3)]" />
+        <span className="text-[10px] font-bold uppercase tracking-[0.1em] text-white/25">
+          Ready
+        </span>
+      </div>
+    );
+  }
 
   return (
     <AnimatePresence mode="wait">

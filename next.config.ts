@@ -22,7 +22,7 @@ const nextConfig: NextConfig = {
       ],
     },
     {
-      source: "/(.*)\\.(js|css|woff2|png|jpg|svg|ico|avif|webp)",
+      source: "/(.*)\\.(woff2|png|jpg|svg|ico|avif|webp)",
       headers: [
         { key: "Cache-Control", value: "public, max-age=31536000, immutable" },
       ],

@@ -3,9 +3,9 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Zap, MessageSquarePlus, Settings, Home, Command, CornerDownLeft } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 
-type CommandItem = {
+export type CommandItem = {
   id: string;
   label: string;
   description: string;
@@ -14,14 +14,33 @@ type CommandItem = {
   shortcut?: string;
 };
 
-export function CommandPalette() {
+interface CommandPaletteProps {
+  onTest?: () => void;
+  onDeploy?: () => void;
+  onTogglePreview?: () => void;
+  isCanvasVisible?: boolean;
+  hasTested?: boolean;
+  isDeploying?: boolean;
+}
+
+export function CommandPalette({
+  onTest,
+  onDeploy,
+  onTogglePreview,
+  isCanvasVisible,
+  hasTested,
+  isDeploying,
+}: CommandPaletteProps = {}) {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+  const pathname = usePathname();
 
-  const commands: CommandItem[] = [
+  const isChatContext = pathname.includes("/chat/");
+
+  const baseCommands: CommandItem[] = [
     {
       id: "new-chat",
       label: "New Automation",
@@ -60,13 +79,43 @@ export function CommandPalette() {
     },
   ];
 
+  // Contextual Commands (Only available in Chat)
+  const chatCommands: CommandItem[] = isChatContext ? [
+    {
+      id: "toggle-preview",
+      label: isCanvasVisible ? "Hide Workflow Preview" : "Show Workflow Preview",
+      description: "Toggle the right-side visual graph panel",
+      icon: Zap,
+      action: () => onTogglePreview?.(),
+      shortcut: "P",
+    },
+    {
+      id: "test-workflow",
+      label: "Test Automation",
+      description: "Run a simulated execution of the pipeline",
+      icon: Zap,
+      action: () => onTest?.(),
+      shortcut: "T",
+    },
+    ...(hasTested && !isDeploying ? [{
+      id: "deploy-workflow",
+      label: "Deploy Automation",
+      description: "Push this workflow to live production",
+      icon: Zap,
+      action: () => onDeploy?.(),
+      shortcut: "D",
+    }] : []),
+  ] : [];
+
+  const allCommands = [...chatCommands, ...baseCommands];
+
   const filtered = query.trim()
-    ? commands.filter(
+    ? allCommands.filter(
         (cmd) =>
           cmd.label.toLowerCase().includes(query.toLowerCase()) ||
           cmd.description.toLowerCase().includes(query.toLowerCase())
       )
-    : commands;
+    : allCommands;
 
   useEffect(() => {
     setSelectedIndex(0);
