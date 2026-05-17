@@ -101,7 +101,7 @@ export default function DashboardShell({
       }
     };
     void fetchRecents();
-  }, [pathname]);
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

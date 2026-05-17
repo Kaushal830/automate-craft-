@@ -103,10 +103,11 @@ export default function WhyUsPage() {
                 Comparison
               </span>
               <h2 className="mt-6 text-[2.2rem] font-semibold leading-[1.05] tracking-[-0.04em] text-foreground sm:text-[2.8rem]">
-                How we stack up.
+                Other tools make you build automations.<br className="hidden sm:block" />
+                We build them for you.
               </h2>
               <p className="mx-auto mt-4 max-w-xl text-[15px] leading-7 text-white/35">
-                We&apos;re not trying to replace every tool. We&apos;re built for teams that want the fastest path from idea to running automation.
+                Describe what you need in one sentence. AutomateCraft generates the full workflow &mdash; triggers, actions, integrations &mdash; in under 3 minutes. No drag-and-drop. No flowcharts.
               </p>
             </div>
           </Reveal>
@@ -181,7 +182,7 @@ export default function WhyUsPage() {
                 Core Capabilities
               </span>
               <h2 className="mt-6 text-[2.2rem] font-semibold leading-[1.05] tracking-[-0.04em] text-foreground sm:text-[2.8rem]">
-                Everything you need to automate faster.
+                Built for teams that automate daily.
               </h2>
             </div>
           </Reveal>
@@ -229,7 +230,7 @@ export default function WhyUsPage() {
           <Reveal>
             <div className="mx-auto max-w-2xl text-center">
               <h2 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                Ready to stop doing it manually?
+                Your first automation takes 90 seconds.
               </h2>
               <p className="mt-4 text-[15px] leading-7 text-white/35">
                 Start building automations in plain English. No credit card required.

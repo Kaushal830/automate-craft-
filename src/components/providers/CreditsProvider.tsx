@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { usePathname } from "next/navigation";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
 
@@ -68,11 +69,22 @@ function normalizeCredits(data: Partial<CreditsState> | null | undefined): Credi
 }
 
 export function CreditsProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const [credits, setCredits] = useState<CreditsState>(DEFAULT_CREDITS);
   const [loading, setLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const creditsEnabled =
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/setup") ||
+    pathname.startsWith("/onboarding");
 
   const refreshCredits = useCallback(async () => {
+    if (!creditsEnabled) {
+      setCredits(DEFAULT_CREDITS);
+      setLoading(false);
+      return;
+    }
+
     try {
       const response = await fetch("/api/credits", {
         cache: "no-store",
@@ -92,13 +104,24 @@ export function CreditsProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [creditsEnabled]);
 
   useEffect(() => {
+    if (!creditsEnabled) {
+      setCredits(DEFAULT_CREDITS);
+      setCurrentUserId(null);
+      setLoading(false);
+      return;
+    }
+
     void refreshCredits();
-  }, [refreshCredits]);
+  }, [creditsEnabled, refreshCredits]);
 
   useEffect(() => {
+    if (!creditsEnabled) {
+      return;
+    }
+
     const handleRefresh = () => {
       void refreshCredits();
     };
@@ -108,9 +131,13 @@ export function CreditsProvider({ children }: { children: ReactNode }) {
     return () => {
       window.removeEventListener("credits:refresh", handleRefresh);
     };
-  }, [refreshCredits]);
+  }, [creditsEnabled, refreshCredits]);
 
   useEffect(() => {
+    if (!creditsEnabled) {
+      return;
+    }
+
     const supabase = getSupabaseBrowserClient();
 
     if (!supabase) {
@@ -129,7 +156,11 @@ export function CreditsProvider({ children }: { children: ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") {
+        return;
+      }
+
       setCurrentUserId(session?.user?.id ?? null);
       void refreshCredits();
     });
@@ -138,10 +169,10 @@ export function CreditsProvider({ children }: { children: ReactNode }) {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [refreshCredits]);
+  }, [creditsEnabled, refreshCredits]);
 
   useEffect(() => {
-    if (!currentUserId) {
+    if (!creditsEnabled || !currentUserId) {
       return;
     }
 
@@ -187,7 +218,7 @@ export function CreditsProvider({ children }: { children: ReactNode }) {
         void supabase.removeChannel(channel);
       }
     };
-  }, [currentUserId]);
+  }, [creditsEnabled, currentUserId]);
 
   const value = useMemo(
     () => ({

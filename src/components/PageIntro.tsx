@@ -37,7 +37,7 @@ export default function PageIntro({
             initial={{ opacity: 0, y }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: dur, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-            className="inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/[0.06] px-3.5 py-1.5 text-[0.72rem] font-bold uppercase tracking-[0.24em] text-accent shadow-[0_0_12px_rgba(59,130,246,0.08)]"
+            className="inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/[0.06] px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.24em] text-accent shadow-[0_0_12px_rgba(59,130,246,0.08)]"
           >
             {eyebrow}
           </motion.span>
@@ -53,7 +53,7 @@ export default function PageIntro({
             initial={{ opacity: 0, y }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: dur, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
-            className="mx-auto mt-7 max-w-2xl text-[0.97rem] leading-8 text-white/40"
+            className="mx-auto mt-7 max-w-2xl text-[15px] leading-8 text-white/40"
           >
             {description}
           </motion.p>

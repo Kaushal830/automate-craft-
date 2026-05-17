@@ -246,7 +246,7 @@ export default function DashboardHomeClient({ firstName }: { firstName: string |
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: reduceMotion ? 0 : 0.7, ease: [0.22, 1, 0.36, 1] }}
             >
-              <h1 className="mx-auto max-w-4xl text-[3.3rem] font-semibold leading-[0.94] tracking-[-0.08em] text-foreground sm:text-[4.4rem] lg:text-[5.4rem]">
+              <h1 className="mx-auto max-w-4xl text-[3.3rem] font-semibold leading-[0.94] tracking-[-0.04em] text-foreground sm:text-[4.4rem] lg:text-[5.4rem]">
                 {displayName ? (
                   <>Ready to build<br />Automation,<br /><span className="text-accent">{displayName.split(" ")[0]}</span></>
                 ) : (
