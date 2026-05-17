@@ -6,6 +6,7 @@ import type {
   IntegrationConnectionRecord,
 } from "@/lib/automation";
 import type { WorkflowRunRecord, StepLogRecord } from "@/lib/workflow-run-store";
+import type { WorkflowVersion } from "@/lib/workflow";
 import { isOpenAccessMode } from "@/lib/env";
 import { GUEST_USER_EMAIL, GUEST_USER_ID, GUEST_USER_NAME } from "@/lib/guest-access";
 import { createLogger } from "@/lib/logger";
@@ -60,6 +61,96 @@ export type ConsultationRequestRecord = {
   createdAt: string;
 };
 
+export type LocalCredentialRecord = {
+  id: string;
+  userId: string;
+  integration: string;
+  name: string;
+  keyId: string;
+  encryptedBlobBase64: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LocalConnectionRecord = {
+  id: string;
+  userId: string;
+  integration: string;
+  status: "pending" | "connected" | "expired" | "revoked";
+  displayName: string | null;
+  scopes: string[];
+  metadata: Record<string, unknown>;
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LocalDeploymentRecord = {
+  id: string;
+  automationId: string;
+  userId: string;
+  versionId: string;
+  adapter: string;
+  state:
+    | "draft"
+    | "validated"
+    | "deployable"
+    | "deployed"
+    | "active"
+    | "paused"
+    | "failed";
+  externalRef: Record<string, unknown> | null;
+  lastError: string | null;
+  deployedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LocalStepExecutionRecord = {
+  id: string;
+  runId: string;
+  stepId: string;
+  status: "pending" | "running" | "success" | "error" | "skipped";
+  startedAt: string | null;
+  finishedAt: string | null;
+  output: Record<string, unknown> | null;
+  error: string | null;
+  durationMs: number | null;
+  createdAt: string;
+};
+
+export type LocalRuntimeEventRecord = {
+  id: string;
+  runId: string;
+  stepId: string | null;
+  kind: string;
+  level: "debug" | "info" | "warn" | "error";
+  message: string;
+  details: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type LocalOAuthStateRecord = {
+  state: string;
+  userId: string;
+  provider: string;
+  issuedAt: string;
+  consumedAt: string | null;
+  extra: Record<string, unknown>;
+};
+
+export type LocalScheduleRecord = {
+  id: string;
+  userId: string;
+  automationId: string;
+  cron: string;
+  timezone: string;
+  status: "active" | "paused";
+  nextRunAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 type LocalDatabase = {
   users: LocalUserRecord[];
   automations: AutomationRecord[];
@@ -71,6 +162,14 @@ type LocalDatabase = {
   subscriptions: UserSubscriptionRecord[];
   workflowRuns: WorkflowRunRecord[];
   stepLogs: StepLogRecord[];
+  workflowVersions: WorkflowVersion[];
+  credentialsVault: LocalCredentialRecord[];
+  connectionsV2: LocalConnectionRecord[];
+  deployments: LocalDeploymentRecord[];
+  stepExecutions: LocalStepExecutionRecord[];
+  runtimeEvents: LocalRuntimeEventRecord[];
+  oauthState: LocalOAuthStateRecord[];
+  schedules: LocalScheduleRecord[];
 };
 
 const STORAGE_DIR = path.join(process.cwd(), "data");
@@ -102,6 +201,14 @@ const emptyDatabase: LocalDatabase = {
   usageLogs: [],
   workflowRuns: [],
   stepLogs: [],
+  workflowVersions: [],
+  credentialsVault: [],
+  connectionsV2: [],
+  deployments: [],
+  stepExecutions: [],
+  runtimeEvents: [],
+  oauthState: [],
+  schedules: [],
   plans: [
     {
       id: "plan_starter",
@@ -170,6 +277,14 @@ function normalizeLocalDatabase(
     subscriptions: database?.subscriptions ?? [],
     workflowRuns: database?.workflowRuns ?? [],
     stepLogs: database?.stepLogs ?? [],
+    workflowVersions: database?.workflowVersions ?? [],
+    credentialsVault: database?.credentialsVault ?? [],
+    connectionsV2: database?.connectionsV2 ?? [],
+    deployments: database?.deployments ?? [],
+    stepExecutions: database?.stepExecutions ?? [],
+    runtimeEvents: database?.runtimeEvents ?? [],
+    oauthState: database?.oauthState ?? [],
+    schedules: database?.schedules ?? [],
   };
 
   if (

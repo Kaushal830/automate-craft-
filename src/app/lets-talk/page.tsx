@@ -247,7 +247,7 @@ export default function LetsTalkPage() {
       {/* Page Header */}
       <div className="text-center mb-10 px-6">
         <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-white mb-4">
-          Let's build something <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent to-blue-400">powerful.</span>
+          Let&apos;s build something <span className="text-transparent bg-clip-text bg-gradient-to-r from-accent to-blue-400">powerful.</span>
         </h1>
         <p className="text-white/50 text-[17px] font-medium max-w-[600px] mx-auto">
           Share your process. We will design the perfect custom automation architecture for your business.

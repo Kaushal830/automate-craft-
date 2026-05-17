@@ -126,7 +126,7 @@ export default function OnboardingFlow({ user }: { user: AuthenticatedUser }) {
                     What should we call you?
                   </h1>
                   <p className="mt-2 text-[0.95rem] text-foreground/50">
-                    Let's personalize your AutomateCraft experience.
+                    Let&apos;s personalize your AutomateCraft experience.
                   </p>
                 </div>
 
@@ -170,7 +170,7 @@ export default function OnboardingFlow({ user }: { user: AuthenticatedUser }) {
                     Which role fits you best?
                   </h1>
                   <p className="mt-2 text-[0.95rem] text-foreground/50">
-                    We'll tailor your automations to your expertise.
+                    We&apos;ll tailor your automations to your expertise.
                   </p>
                 </div>
 

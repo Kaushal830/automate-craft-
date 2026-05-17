@@ -392,7 +392,7 @@ function EmptyState() {
               <span className="text-sky-500 font-semibold text-[12px] uppercase tracking-wider">Use Case</span>
             </div>
             <p className="text-[14px] text-[var(--build-text-primary)] font-medium mb-1">Lead Management</p>
-            <p className="text-[13px] text-[var(--build-text-tertiary)]">"When a HubSpot deal closes, notify Slack and create a Notion project."</p>
+            <p className="text-[13px] text-[var(--build-text-tertiary)]">&quot;When a HubSpot deal closes, notify Slack and create a Notion project.&quot;</p>
           </div>
           
           <div className="p-4 rounded-xl border border-[var(--build-border)] bg-[var(--build-surface)]">
@@ -400,7 +400,7 @@ function EmptyState() {
               <span className="text-emerald-500 font-semibold text-[12px] uppercase tracking-wider">Use Case</span>
             </div>
             <p className="text-[14px] text-[var(--build-text-primary)] font-medium mb-1">Customer Support</p>
-            <p className="text-[13px] text-[var(--build-text-tertiary)]">"Route Zendesk tickets to specific Discord channels based on priority."</p>
+            <p className="text-[13px] text-[var(--build-text-tertiary)]">&quot;Route Zendesk tickets to specific Discord channels based on priority.&quot;</p>
           </div>
         </div>
 
@@ -411,7 +411,7 @@ function EmptyState() {
               SJ
             </div>
             <div>
-              <p className="text-[13px] italic text-[var(--build-text-secondary)] mb-2">"AutomateCraft reduced our manual data entry time by 90%. We deployed our first pipeline in minutes without touching any code."</p>
+              <p className="text-[13px] italic text-[var(--build-text-secondary)] mb-2">&quot;AutomateCraft reduced our manual data entry time by 90%. We deployed our first pipeline in minutes without touching any code.&quot;</p>
               <p className="text-[12px] font-semibold text-[var(--build-text-primary)]">Sarah Jenkins, Ops Lead</p>
             </div>
           </div>

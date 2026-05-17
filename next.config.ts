@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
+import path from "node:path";
+
+const projectRoot = process.cwd().includes(`${path.sep}.claude${path.sep}worktrees${path.sep}`)
+  ? path.resolve(process.cwd(), "..", "..", "..")
+  : process.cwd();
 
 const nextConfig: NextConfig = {
+  turbopack: {
+    root: projectRoot,
+  },
   images: {
     formats: ["image/avif", "image/webp"],
   },

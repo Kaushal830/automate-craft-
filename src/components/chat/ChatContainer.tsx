@@ -707,7 +707,7 @@ export function ChatContainer({ chatId, initialPrompt, ultraThinking: ultraThink
         {
           title: "Setup Configuration",
           description: "Enter the target destination details",
-          fields: automation.fields as any
+          fields: automation.fields as FieldDef[]
         },
         false,
         {

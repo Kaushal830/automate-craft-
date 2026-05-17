@@ -1,6 +1,9 @@
 {
   "files.watcherExclude": {
     "**/.git/**": true,
+    "**/.claude/**": true,
+    "**/.codex/**": true,
+    "**/.cursor/**": true,
     "**/.next/**": true,
     "**/.vercel/**": true,
     "**/node_modules/**": true,
@@ -9,6 +12,9 @@
     "**/coverage/**": true
   },
   "search.exclude": {
+    "**/.claude": true,
+    "**/.codex": true,
+    "**/.cursor": true,
     "**/.next": true,
     "**/.vercel": true,
     "**/node_modules": true,
@@ -16,9 +22,30 @@
     "**/build": true,
     "**/coverage": true
   },
+  "files.exclude": {
+    "**/.claude": true,
+    "**/.codex": true,
+    "**/.cursor": true,
+    "**/.next": true,
+    "**/.vercel": true,
+    "**/node_modules": true
+  },
   "typescript.tsserver.watchOptions": {
     "watchFile": "useFsEvents",
     "watchDirectory": "useFsEvents",
     "fallbackPolling": "dynamicPriority"
-  }
+  },
+  "git.repositoryScanIgnoredFolders": [
+    ".claude",
+    ".codex",
+    ".cursor",
+    ".next",
+    ".vercel",
+    "node_modules"
+  ],
+  "git.ignoredRepositories": [
+    "C:\\website\\.claude\\worktrees\\musing-williamson-5a08f5",
+    "C:\\website\\.claude\\worktrees\\pedantic-leakey-6f5bb5",
+    "C:\\website\\.claude\\worktrees\\zen-volhard-57bbce"
+  ]
 }

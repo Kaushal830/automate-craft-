@@ -394,7 +394,7 @@ export default function AuthScreen({
                     <>
                       <div className="mb-6">
                         <h2 className="text-xl font-semibold text-white mb-2">Reset Password</h2>
-                        <p className="text-sm text-white/40">Enter your email address and we'll send you a link to reset your password.</p>
+                        <p className="text-sm text-white/40">Enter your email address and we&apos;ll send you a link to reset your password.</p>
                       </div>
                       <form onSubmit={handleResetPassword} className="space-y-4">
                         <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email address" autoComplete="email" autoFocus className={inputCls} />
