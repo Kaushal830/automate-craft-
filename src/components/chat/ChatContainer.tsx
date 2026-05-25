@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import dynamic from "next/dynamic";
-import { useChatStore } from "@/store/chat-store";
+import { useChatStore, MESSAGES_PERSIST_LIMIT } from "@/store/chat-store";
 import type { FlowNode } from "./InteractiveCanvas";
 import type { ChatSequenceStep, WorkspaceState } from "@/store/chat-store";
 import { SystemStatusBar, type SystemPhase } from "./SystemStatusBar";
@@ -223,14 +223,30 @@ export function ChatContainer({
     setStoreNodes(chatId, next);
   };
 
+  /**
+   * useChat hydration strategy.
+   *
+   * Pass an EMPTY initialMessages here. Reading the store from a useState
+   * initializer would cause SSR/client divergence (server has no
+   * localStorage, client does) which triggers a React hydration mismatch
+   * and may cause React to discard hydrated DOM.
+   *
+   * Instead, after the client mount completes, the restore effect below
+   * detects an empty aiMessages + non-empty persistedMessages and calls
+   * `setMessages` to seed the conversation. Same first-paint on server
+   * and client; no mismatch warning; conversation restores on the next
+   * commit.
+   */
   const {
     messages: aiMessages,
     status: aiStatus,
     stop: stopGeneration,
     submitPrompt,
+    setMessages: setChatMessages,
   } = useAutomationChat({
     chatId,
     ultraThinking,
+    initialMessages: [],
     onNodesUpdate: (newNodes) => {
       const triggerNode = newNodes.find((node) => node.type === "trigger");
       const actionNode = newNodes.find((node) => node.type === "action");
@@ -253,6 +269,57 @@ export function ChatContainer({
       setWorkspaceState("understanding");
     },
   });
+
+  /**
+   * RESTORE: after client hydration, seed useChat from persistedMessages
+   * if it is empty and the store has prior conversation. Runs once per
+   * mount via the `restoredRef` guard so we don't re-seed mid-conversation
+   * (which would discard streaming deltas).
+   *
+   * This restores the EXACT workspace on refresh:
+   *   - same user + assistant messages
+   *   - same tool-buildWorkflow parts (so the canvas continues to reflect
+   *     the generated workflow)
+   *   - combined with the persisted nodes/panelOpen/workspaceState in the
+   *     session, the entire workspace looks identical to pre-refresh.
+   */
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (!isClient || restoredRef.current) return;
+    if (aiMessages.length > 0) {
+      // useChat already has messages (fresh conversation in progress).
+      restoredRef.current = true;
+      return;
+    }
+    const stored = useChatStore.getState().sessions[chatId]?.persistedMessages ?? [];
+    if (stored.length > 0) {
+      setChatMessages(stored);
+    }
+    restoredRef.current = true;
+  }, [isClient, aiMessages.length, chatId, setChatMessages]);
+
+  /**
+   * MIRROR: write conversation messages back to the store on every change
+   * so a future refresh can restore them. Skipped before restore completes
+   * (prevents the empty initial value from clobbering persistedMessages
+   * during the brief window between mount and restore).
+   *
+   * Trim to MESSAGES_PERSIST_LIMIT to bound localStorage. Cheap diff
+   * (length + last id) skips no-op writes when not streaming.
+   */
+  useEffect(() => {
+    if (!isClient || !restoredRef.current) return;
+    const stored = useChatStore.getState().sessions[chatId]?.persistedMessages ?? [];
+    const trimmed =
+      aiMessages.length > MESSAGES_PERSIST_LIMIT
+        ? aiMessages.slice(-MESSAGES_PERSIST_LIMIT)
+        : aiMessages;
+    const sameLength = stored.length === trimmed.length;
+    const sameLast = stored[stored.length - 1]?.id === trimmed[trimmed.length - 1]?.id;
+    // While streaming, parts grow under the same id — always sync.
+    if (sameLength && sameLast && aiStatus !== "streaming") return;
+    updateSession(chatId, { persistedMessages: trimmed });
+  }, [aiMessages, aiStatus, chatId, isClient, updateSession]);
 
   const isGenerating = aiStatus === "streaming" || aiStatus === "submitted";
   const hasAssistantResponse = aiMessages.some((message) => message.role === "assistant");

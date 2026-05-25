@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { UIMessage } from 'ai';
 import type { FlowNode } from '../components/chat/InteractiveCanvas';
 
 /**
@@ -76,7 +77,22 @@ export interface ChatSession {
    * when the chat is explicitly reset (/clear).
    */
   autoSubmittedAt: number | null;
+
+  /* ── conversation persistence ────────────────────────────────── */
+  /**
+   * Snapshot of `useChat` messages mirrored from the AI SDK after each
+   * change. Used to seed `useChat({messages})` on mount so a browser
+   * refresh on /dashboard/chat/[chatId] restores the EXACT conversation
+   * (text, parts, tool-buildWorkflow outputs) — same workspace, same
+   * messages, no flicker through EmptyState.
+   *
+   * Capped at MESSAGES_PERSIST_LIMIT to keep localStorage bounded.
+   */
+  persistedMessages: UIMessage[];
 }
+
+/** Cap on persisted messages per chat (keeps localStorage reasonable). */
+export const MESSAGES_PERSIST_LIMIT = 100;
 
 interface ChatStore {
   sessions: Record<string, ChatSession>;
@@ -106,6 +122,7 @@ const defaultSession: ChatSession = {
   hasDeployed: false,
   ultraThinking: false,
   autoSubmittedAt: null,
+  persistedMessages: [],
 };
 
 /**
