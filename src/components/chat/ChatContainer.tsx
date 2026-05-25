@@ -190,7 +190,8 @@ export function ChatContainer({
   const hasDeployed = isClient ? session?.hasDeployed ?? false : false;
   // Ultra-thinking: URL param overrides stored value on first mount; persisted thereafter.
   const ultraThinking = isClient ? session?.ultraThinking ?? ultraThinkingProp : ultraThinkingProp;
-  const autoSubmittedAt = isClient ? session?.autoSubmittedAt ?? null : null;
+  // autoSubmittedAt deliberately NOT read here — the effect uses
+  // useChatStore.getState() inside the body to bypass render staleness.
 
   // ── Workspace setters (route through updateSession for updatedAt) ──
   const setIsPanelOpen = useCallback(
@@ -484,12 +485,6 @@ export function ChatContainer({
    */
   const STICK_THRESHOLD_PX = 120;
   const stickToBottomRef = useRef(true);
-
-  const isNearBottom = useCallback(() => {
-    const el = scrollContainerRef.current;
-    if (!el) return true;
-    return el.scrollHeight - el.scrollTop - el.clientHeight < STICK_THRESHOLD_PX;
-  }, []);
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
     stickToBottomRef.current = true;

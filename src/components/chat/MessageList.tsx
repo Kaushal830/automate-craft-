@@ -67,62 +67,11 @@ function getUiMessageTimestamp(message: UIMessage) {
   return undefined;
 }
 
-function formatTime(timestamp?: number): string {
-  if (!timestamp) return "";
-  return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
 /* ── AI Avatar (Claude bolt mark) ── */
 function AiAvatar({ isActive = false }: { isActive?: boolean }) {
   return (
     <div className={`cc-ai-mark${isActive ? " is-breath" : ""}`}>
       <Zap className="h-3.5 w-3.5" />
-    </div>
-  );
-}
-
-/* ── Streaming text with word-by-word reveal ── */
-function StreamContent({ content, timestamp }: { content: string; timestamp?: number }) {
-  const [displayed, setDisplayed] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
-
-  useEffect(() => {
-    const isNew = Date.now() - (timestamp || 0) < 2000;
-    const prefersReduced =
-      typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-    if (!isNew || prefersReduced) {
-      setDisplayed(content);
-      setIsStreaming(false);
-      return;
-    }
-
-    setIsStreaming(true);
-    let index = 0;
-    let timeoutId: ReturnType<typeof setTimeout>;
-
-    const tick = () => {
-      index += 2;
-      if (index > content.length) index = content.length;
-      setDisplayed(content.slice(0, index));
-      if (index === content.length) {
-        setIsStreaming(false);
-        return;
-      }
-
-      const char = content[index - 1] || "";
-      const delay = char === "." || char === "!" || char === "?" ? 60 : char === "," || char === ";" || char === ":" ? 40 : char === "\n" ? 70 : Math.max(10, 16 - Math.floor(index / 80));
-      timeoutId = setTimeout(tick, delay);
-    };
-
-    timeoutId = setTimeout(tick, 14);
-    return () => clearTimeout(timeoutId);
-  }, [content, timestamp]);
-
-  return (
-    <div className="whitespace-pre-wrap">
-      {displayed}
-      {isStreaming && <span className="cc-caret" />}
     </div>
   );
 }
