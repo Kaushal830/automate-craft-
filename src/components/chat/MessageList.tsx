@@ -4,24 +4,32 @@ import React, { useEffect, useState } from "react";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
 import { AlertTriangle, Check, CheckCircle2, Copy, Pencil, Zap } from "lucide-react";
 import type { UIMessage } from "ai";
-import type { Message } from "@/store/chat-store";
 import { AiMessage } from "./AiMessage";
 
 /**
- * Legacy in-chat cards (FormCard, IntegrationCard, EngineAnalysisCard,
- * ReadyCard, ProgressCard, ThinkingIndicator) were deleted during the
- * workspace-native refactor. Phase 1 keeps the props surface backward-
- * compatible and removes all dead render branches that referenced those
- * components. Phase 2 will drop the `messages` (Zustand) loop entirely
- * once useChat becomes the canonical source.
+ * Single canonical message source: AI SDK `useChat`.
+ *
+ * `aiMessages` is the conversation (user + assistant). `notices` is a
+ * separate stream of ephemeral system feedback (test/deploy confirmations,
+ * provider errors) owned by ChatContainer's local state — never persisted,
+ * never sent to the model.
+ *
+ * Legacy Zustand `messages: Message[]` field was removed in Phase 2.
  */
+
+export type Notice = {
+  id: string;
+  content: string;
+  timestamp: number;
+  kind: "info" | "error";
+};
 
 type UIMessagePart = UIMessage["parts"][number];
 type TextPart = Extract<UIMessagePart, { type: "text" }>;
 
 interface MessageListProps {
-  messages: Message[];
   aiMessages: UIMessage[];
+  notices: Notice[];
   isGenerating: boolean;
   hoveredMsgId: string | null;
   copiedId: string | null;
@@ -228,8 +236,8 @@ function MessageActions({
 }
 
 export function MessageList({
-  messages,
   aiMessages,
+  notices,
   isGenerating,
   hoveredMsgId,
   copiedId,
@@ -242,72 +250,7 @@ export function MessageList({
 
   return (
     <LayoutGroup>
-      <AnimatePresence initial={false}>
-        {messages.map((msg) => (
-          <React.Fragment key={msg.id}>
-            <motion.div
-              layout
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            >
-              {/* ── User messages (legacy Zustand path; Phase 2 removes) ── */}
-              {msg.role === "user" && (
-                <div
-                  className="cc-msg cc-msg--user"
-                  onMouseEnter={() => onHoverMsg(msg.id)}
-                  onMouseLeave={() => onHoverMsg(null)}
-                >
-                  <div className="flex flex-col items-end gap-1">
-                    <div className="cc-msg__body">
-                      {msg.content}
-                    </div>
-                    <div className="flex items-center gap-1.5 mr-1">
-                      <MessageActions
-                        msgId={msg.id}
-                        content={msg.content}
-                        isVisible={hoveredMsgId === msg.id}
-                        copiedId={copiedId}
-                        onCopy={onCopy}
-                        onEdit={onEdit}
-                      />
-                      {msg.timestamp && (
-                        <span style={{ fontFamily: "var(--cc-mono)", fontSize: 10, color: "var(--cc-text-3)" }}>
-                          {formatTime(msg.timestamp)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* ── AI text messages (legacy Zustand path; Phase 2 removes) ── */}
-              {msg.role === "ai" && msg.content && (
-                <div className="cc-msg cc-msg--ai">
-                  <AiAvatar />
-                  <div className="cc-msg__body">
-                    <div className="cc-msg__text">
-                      <StreamContent content={msg.content} timestamp={msg.timestamp} />
-                    </div>
-                    {msg.timestamp && (
-                      <span style={{ display: "block", paddingLeft: 1, marginTop: 6, fontFamily: "var(--cc-mono)", fontSize: 10, color: "var(--cc-text-3)" }}>
-                        {formatTime(msg.timestamp)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* ── Thinking + system notices collapse to SystemNotice ── */}
-              {(msg.role === "thinking" || msg.role === "system") && msg.content && (
-                <SystemNotice label={msg.content} />
-              )}
-            </motion.div>
-          </React.Fragment>
-        ))}
-      </AnimatePresence>
-
-      {/* ── AI SDK streaming messages (canonical source) ── */}
+      {/* ── AI SDK conversation (canonical) ── */}
       {aiMessages
         .filter((message) => message.role === "assistant" || message.role === "user")
         .map((message) => {
@@ -365,6 +308,22 @@ export function MessageList({
 
       {/* ── Thinking card when waiting for first token ── */}
       {isGenerating && lastAiMessage?.role !== "assistant" && <ThinkingCard />}
+
+      {/* ── Ephemeral system notices (test/deploy/errors) ── */}
+      <AnimatePresence initial={false}>
+        {notices.map((notice) => (
+          <motion.div
+            key={notice.id}
+            layout
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <SystemNotice label={notice.content} />
+          </motion.div>
+        ))}
+      </AnimatePresence>
 
       <div ref={messagesEndRef} className="h-4" />
     </LayoutGroup>

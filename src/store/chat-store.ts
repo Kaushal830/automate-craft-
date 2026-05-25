@@ -3,10 +3,21 @@ import { persist } from 'zustand/middleware';
 import type { FlowNode } from '../components/chat/InteractiveCanvas';
 
 /**
- * Legacy in-chat artifact types (FormCard, ReadyCard, EngineCards) were removed
- * during the workspace-native refactor. The Message type now carries only the
- * fields needed for Zustand-persisted history. Streaming/optimistic message
- * lifecycle is owned by AI SDK `useChat` (canonical message source).
+ * Zustand chat store.
+ *
+ * Stores ONLY session metadata: title, starred flag, workflow nodes, and
+ * workspace lifecycle state. Does NOT store messages — the canonical message
+ * source is AI SDK `useChat` (Phase 2 normalization). System notices are
+ * ephemeral local state in ChatContainer.
+ *
+ * Old persisted entries with a `messages: Message[]` field are tolerated
+ * (extra fields ignored by Zustand persist middleware).
+ */
+
+/**
+ * @deprecated Kept only for backward type imports from older revisions.
+ * No new code should reference this type. Conversation messages are owned
+ * by useChat (AI SDK).
  */
 export type Message = {
   id: string;
@@ -22,7 +33,6 @@ export type WorkspaceState = "understanding" | "collecting_inputs" | "ready_to_b
 export interface ChatSession {
   chatTitle: string;
   isStarred: boolean;
-  messages: Message[];
   step: ChatSequenceStep;
   workspaceState: WorkspaceState;
   nodes: FlowNode[];
@@ -32,8 +42,6 @@ interface ChatStore {
   sessions: Record<string, ChatSession>;
   getSession: (id: string) => ChatSession;
   updateSession: (id: string, update: Partial<ChatSession>) => void;
-  addMessage: (id: string, message: Message) => void;
-  updateMessage: (id: string, messageId: string, update: Partial<Message>) => void;
   updateNode: (id: string, nodeId: string, update: Partial<FlowNode>) => void;
   setNodes: (id: string, nodes: FlowNode[]) => void;
 }
@@ -41,7 +49,6 @@ interface ChatStore {
 const defaultSession: ChatSession = {
   chatTitle: "New Automation",
   isStarred: false,
-  messages: [],
   step: "boot",
   workspaceState: "understanding",
   nodes: [
@@ -57,7 +64,7 @@ export const useChatStore = create<ChatStore>()(
       sessions: {},
       getSession: (id) => {
         const session = get().sessions[id];
-        return session || { ...defaultSession, messages: [] };
+        return session || { ...defaultSession };
       },
       updateSession: (id, update) => {
         set((state) => ({
@@ -69,37 +76,6 @@ export const useChatStore = create<ChatStore>()(
             },
           },
         }));
-      },
-      addMessage: (id, message) => {
-        set((state) => {
-          const session = state.sessions[id] || defaultSession;
-          return {
-            sessions: {
-              ...state.sessions,
-              [id]: {
-                ...session,
-                messages: [...session.messages, message],
-              },
-            },
-          };
-        });
-      },
-      updateMessage: (id, messageId, update) => {
-        set((state) => {
-          const session = state.sessions[id];
-          if (!session) return state;
-          return {
-            sessions: {
-              ...state.sessions,
-              [id]: {
-                ...session,
-                messages: session.messages.map((m) =>
-                  m.id === messageId ? { ...m, ...update } : m
-                ),
-              },
-            },
-          };
-        });
       },
       updateNode: (id, nodeId, update) => {
         set((state) => {

@@ -18,7 +18,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import { useChatStore } from "@/store/chat-store";
 import type { FlowNode } from "./InteractiveCanvas";
-import type { ChatSequenceStep, Message, WorkspaceState } from "@/store/chat-store";
+import type { ChatSequenceStep, WorkspaceState } from "@/store/chat-store";
 import { SystemStatusBar, type SystemPhase } from "./SystemStatusBar";
 import { CommandPalette } from "./CommandPalette";
 import { useAutomationChat } from "@/hooks/useAutomationChat";
@@ -118,11 +118,21 @@ function sanitizeCustomTitle(value: string) {
   return value.replace(/[^\w\s-]/g, "").replace(/\s+/g, " ").trim().slice(0, 40);
 }
 
-function isTransientSystemError(message: Message) {
-  return (
-    message.role !== "user" &&
-    /not enough credits|ai provider error|request failed|failed to fetch/i.test(message.content)
-  );
+/**
+ * Ephemeral system notice (test/deploy confirmations, provider errors).
+ * Lives only in ChatContainer's local state — not persisted, not part of
+ * the model conversation. Distinct from user/assistant messages, which are
+ * owned exclusively by useChat (canonical message source).
+ */
+type Notice = {
+  id: string;
+  content: string;
+  timestamp: number;
+  kind: "info" | "error";
+};
+
+function isErrorNotice(content: string): boolean {
+  return /not enough credits|ai provider error|request failed|failed to fetch|error/i.test(content);
 }
 
 export function ChatContainer({
@@ -167,21 +177,43 @@ export function ChatContainer({
   const [draftTitle, setDraftTitle] = useState(chatTitle);
   const isStarred = isClient ? session?.isStarred || false : false;
 
-  const defaultMessages: Message[] = [];
   const defaultNodes: FlowNode[] = [
     { id: "n1", type: "trigger", label: "Form Submission", status: "completed", detail: "Awaiting incoming form data" },
     { id: "n2", type: "process", label: "AI Analysis", status: "pending" },
     { id: "n3", type: "action", label: "Send Notification", status: "pending" },
   ];
 
-  const visibleMessages = (items: Message[]) => items.filter((message) => message.id !== "init-sys");
-  const rawMessages = isClient ? session?.messages || defaultMessages : defaultMessages;
   const step = isClient ? session?.step || "boot" : "boot";
   const workspaceState = isClient ? session?.workspaceState || "understanding" : "understanding";
   const nodes = isClient ? session?.nodes || defaultNodes : defaultNodes;
-  const messages = visibleMessages(rawMessages).filter(
-    (message) => workspaceState !== "canvas_visible" || !isTransientSystemError(message),
-  );
+
+  // Ephemeral system notices (test/deploy confirmations, provider errors).
+  // Not persisted, not part of model conversation. Distinct from user/assistant
+  // messages which are owned by useChat (canonical source).
+  const [notices, setNotices] = useState<Notice[]>([]);
+
+  const pushNotice = useCallback((content: string, kind?: Notice["kind"]) => {
+    const normalized = content.trim();
+    if (!normalized) return;
+    const timestamp = Date.now();
+    const resolvedKind: Notice["kind"] = kind ?? (isErrorNotice(normalized) ? "error" : "info");
+    setNotices((prev) => {
+      // Dedupe: drop if same content + kind within last 2s
+      const dup = prev.some(
+        (n) =>
+          n.content === normalized &&
+          n.kind === resolvedKind &&
+          timestamp - n.timestamp < 2000,
+      );
+      return dup
+        ? prev
+        : [...prev, { id: crypto.randomUUID(), content: normalized, timestamp, kind: resolvedKind }];
+    });
+  }, []);
+
+  const clearErrorNotices = useCallback(() => {
+    setNotices((prev) => prev.filter((n) => n.kind !== "error"));
+  }, []);
 
   const setChatTitle = (update: string | ((prev: string) => string)) => {
     const next = typeof update === "function" ? update(chatTitle) : update;
@@ -191,14 +223,6 @@ export function ChatContainer({
   const setIsStarred = (update: boolean | ((prev: boolean) => boolean)) => {
     const next = typeof update === "function" ? update(isStarred) : update;
     updateSession(chatId, { isStarred: next });
-  };
-
-  const setMessages = (update: Message[] | ((prev: Message[]) => Message[])) => {
-    const latestMessages = visibleMessages(
-      useChatStore.getState().sessions[chatId]?.messages || defaultMessages,
-    );
-    const next = typeof update === "function" ? update(latestMessages) : update;
-    updateSession(chatId, { messages: next });
   };
 
   const setStep = (update: ChatSequenceStep | ((prev: ChatSequenceStep) => ChatSequenceStep)) => {
@@ -215,31 +239,6 @@ export function ChatContainer({
     const latestNodes = useChatStore.getState().sessions[chatId]?.nodes || defaultNodes;
     const next = typeof update === "function" ? update(latestNodes) : update;
     setStoreNodes(chatId, next);
-  };
-
-  const addMessage = (
-    role: "user" | "ai" | "system" | "thinking",
-    content: string,
-    newWorkspaceState?: WorkspaceState,
-  ) => {
-    const normalizedContent = content.trim();
-    if (!normalizedContent) return;
-
-    const timestamp = Date.now();
-    const newMsg: Message = { id: crypto.randomUUID(), role, content: normalizedContent, timestamp };
-
-    setMessages((prev) => {
-      const isDuplicate = prev.some(
-        (message) =>
-          message.role === role &&
-          message.content === normalizedContent &&
-          typeof message.timestamp === "number" &&
-          Math.abs(timestamp - message.timestamp) < 2000,
-      );
-      return isDuplicate ? prev : [...prev, newMsg];
-    });
-
-    if (newWorkspaceState) setWorkspaceState(newWorkspaceState);
   };
 
   const {
@@ -263,28 +262,27 @@ export function ChatContainer({
       setStep("ready");
     },
     onWorkflowBuilt: (name) => {
-      setMessages((prev) => prev.filter((message) => !isTransientSystemError(message)));
+      // Successful build supersedes prior provider errors.
+      clearErrorNotices();
       if (name) setChatTitle(name);
     },
     onErrorMessage: (message) => {
-      addMessage("system", message || "The AI request failed. Check the console/server logs.");
+      pushNotice(message || "The AI request failed. Check the console/server logs.", "error");
       setWorkspaceState("understanding");
     },
   });
 
   const isGenerating = aiStatus === "streaming" || aiStatus === "submitted";
   const hasAssistantResponse = aiMessages.some((message) => message.role === "assistant");
-  const displayMessages = hasAssistantResponse
-    ? messages.filter(
-        (message) =>
-          !isTransientSystemError(message) ||
-          typeof message.timestamp !== "number" ||
-          Date.now() - message.timestamp < 30000,
-      )
-    : messages;
+
+  // Once an assistant response arrives, drop stale error notices older than 30s
+  // so transient errors don't linger above a successful generation.
+  const visibleNotices = hasAssistantResponse
+    ? notices.filter((n) => n.kind !== "error" || Date.now() - n.timestamp < 30000)
+    : notices;
 
   const isCanvasVisible = workspaceState === "canvas_visible";
-  const hasMessages = displayMessages.length > 0 || aiMessages.length > 0;
+  const hasMessages = visibleNotices.length > 0 || aiMessages.length > 0;
   const isInputDisabled = isGenerating;
 
   const composerPlaceholder = (() => {
@@ -363,7 +361,7 @@ export function ChatContainer({
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, aiMessages, isGenerating, scrollToBottom]);
+  }, [notices, aiMessages, isGenerating, scrollToBottom]);
 
   useEffect(() => {
     const el = scrollContainerRef.current;
@@ -467,7 +465,7 @@ export function ChatContainer({
       } catch (err) {
         console.error("[ChatContainer] File processing error:", err);
         if (!input) {
-          addMessage("system", "File processing failed. Please try a smaller or supported file.");
+          pushNotice("File processing failed. Please try a smaller or supported file.", "error");
           setWorkspaceState("understanding");
           return;
         }
@@ -496,7 +494,7 @@ export function ChatContainer({
 
     setIsTesting(false);
     setHasTested(true);
-    addMessage("system", "Test passed. All pipeline steps executed without errors.");
+    pushNotice("Test passed. All pipeline steps executed without errors.", "info");
   };
 
   const handleDeploy = async () => {
@@ -505,7 +503,7 @@ export function ChatContainer({
     setIsDeploying(false);
     setHasDeployed(true);
     setStep("deployed");
-    addMessage("system", "Pipeline deployed. Your automation is now live.");
+    pushNotice("Pipeline deployed. Your automation is now live.", "info");
   };
 
   const handleSuggestionClick = (suggestion: string) => {
@@ -544,17 +542,17 @@ export function ChatContainer({
           if (hasTested && !isDeploying && !hasDeployed) handleDeploy();
           break;
         case "/clear":
-          setMessages([]);
+          setNotices([]);
           setWorkspaceState("understanding");
           setStep("boot");
           break;
         case "/status":
-          addMessage("system", `Status: ${systemPhase} · ${nodes.length} nodes · ${step}`);
+          pushNotice(`Status: ${systemPhase} · ${nodes.length} nodes · ${step}`, "info");
           break;
         case "/help":
-          addMessage(
-            "system",
-            "Available commands: /test (run test), /deploy (deploy workflow), /clear (reset conversation), /status (show status), /help (show commands)"
+          pushNotice(
+            "Available commands: /test (run test), /deploy (deploy workflow), /clear (reset conversation), /status (show status), /help (show commands)",
+            "info",
           );
           break;
         default:
@@ -812,8 +810,8 @@ export function ChatContainer({
                   />
                 ) : (
                   <MessageList
-                    messages={displayMessages}
                     aiMessages={aiMessages}
+                    notices={visibleNotices}
                     isGenerating={isGenerating}
                     hoveredMsgId={hoveredMsgId}
                     copiedId={copiedId}
