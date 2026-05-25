@@ -407,20 +407,47 @@ export function ChatContainer({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  /**
+   * Streaming-safe auto-scroll.
+   *
+   * Anchor only when the user is already near the bottom (within 120px).
+   * If the user scrolled up to read earlier content, never yank them back
+   * mid-stream. The "scroll to bottom" FAB lets them re-anchor manually.
+   *
+   * `stickToBottomRef` is the single source of truth for scroll intent:
+   *   - true after a user sends a message (force-stick once)
+   *   - true while user is near bottom
+   *   - false the moment they scroll up past the threshold
+   */
+  const STICK_THRESHOLD_PX = 120;
+  const stickToBottomRef = useRef(true);
+
+  const isNearBottom = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < STICK_THRESHOLD_PX;
   }, []);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [notices, aiMessages, isGenerating, scrollToBottom]);
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    stickToBottomRef.current = true;
+    messagesEndRef.current?.scrollIntoView({ behavior });
+  }, []);
 
+  // Anchor on new content only when user intent is "stick to bottom".
+  useEffect(() => {
+    if (!stickToBottomRef.current) return;
+    messagesEndRef.current?.scrollIntoView({ behavior: isGenerating ? "auto" : "smooth" });
+  }, [notices, aiMessages, isGenerating]);
+
+  // Track scroll position → update FAB + scroll intent.
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
 
     const handleScroll = () => {
       const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      const near = distFromBottom < STICK_THRESHOLD_PX;
+      stickToBottomRef.current = near;
       setShowScrollBtn(distFromBottom > 200);
     };
 
@@ -509,6 +536,8 @@ export function ChatContainer({
     setAttachedFiles([]);
     setFileErrors([]);
     setWorkspaceState("ready_to_build");
+    // User just sent — re-stick to bottom regardless of previous scroll position.
+    stickToBottomRef.current = true;
 
     if (filesToProcess.length > 0) {
       try {
@@ -894,7 +923,7 @@ export function ChatContainer({
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.8 }}
                   transition={{ duration: 0.15 }}
-                  onClick={scrollToBottom}
+                  onClick={() => scrollToBottom("smooth")}
                   className="cc-hbtn"
                   style={{ position: "absolute", bottom: 100, right: 20, zIndex: 40, borderRadius: "50%", width: 36, height: 36, display: "grid", placeItems: "center" }}
                   aria-label="Scroll to bottom"
