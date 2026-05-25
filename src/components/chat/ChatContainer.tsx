@@ -7,11 +7,9 @@ import {
   ChevronDown,
   ChevronsDown,
   HelpCircle,
-  LayoutGrid,
   PanelRight,
   Pencil,
   Star,
-  X,
   Zap,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -24,7 +22,6 @@ import { CommandPalette } from "./CommandPalette";
 import { useAutomationChat } from "@/hooks/useAutomationChat";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
-import { EmptyState } from "./EmptyState";
 import { getFileCategory, processFiles, validateFile } from "@/lib/file-utils";
 
 const InteractiveCanvas = dynamic(
@@ -40,51 +37,6 @@ const helpTips = [
 ];
 
 /* ── Templates (connected to suggestion system) ── */
-const STARTER_TEMPLATES = [
-  {
-    title: "Email Follow-up",
-    desc: "Automate my email follow-up workflow after form submissions",
-    icons: ["📧", "🔄"],
-    meta: "2 steps · Email + Forms",
-    prompt: "Automate my email follow-up workflow",
-  },
-  {
-    title: "Sheets → CRM Sync",
-    desc: "Sync new Google Sheets rows to CRM contacts automatically",
-    icons: ["📊", "💼"],
-    meta: "3 steps · Sheets + CRM",
-    prompt: "Sync Google Sheets data to my CRM",
-  },
-  {
-    title: "Form Alert Pipeline",
-    desc: "Send instant alerts via email and Slack when forms are submitted",
-    icons: ["📋", "🔔"],
-    meta: "2 steps · Forms + Notifications",
-    prompt: "Send alerts when a form is submitted",
-  },
-  {
-    title: "WhatsApp Leads",
-    desc: "Route WhatsApp messages to your lead pipeline with AI triage",
-    icons: ["💬", "🎯"],
-    meta: "3 steps · WhatsApp + AI",
-    prompt: "Connect WhatsApp to my lead pipeline",
-  },
-  {
-    title: "Slack Digest Bot",
-    desc: "Summarize daily activity across tools and post to Slack",
-    icons: ["💬", "📊"],
-    meta: "3 steps · Multi-source + Slack",
-    prompt: "Create a daily Slack digest summarizing activity across my tools",
-  },
-  {
-    title: "Invoice Processor",
-    desc: "Extract data from uploaded invoices and log to accounting",
-    icons: ["🧾", "💰"],
-    meta: "2 steps · AI + Accounting",
-    prompt: "Build an invoice processing automation that extracts data and logs to accounting",
-  },
-];
-
 interface ChatContainerProps {
   chatId: string;
   initialPrompt?: string;
@@ -161,7 +113,6 @@ export function ChatContainer({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
-  const [showTemplates, setShowTemplates] = useState(false);
 
   // ── Persisted workspace state (chat-store, per chatId) ─────────
   const { sessions, updateSession, setNodes: setStoreNodes } = useChatStore();
@@ -645,14 +596,6 @@ export function ChatContainer({
     pushNotice("Pipeline deployed. Your automation is now live.", "info");
   };
 
-  const handleSuggestionClick = (suggestion: string) => {
-    setInputText(suggestion);
-    setTimeout(() => {
-      const form = document.querySelector<HTMLFormElement>("form[data-chat-form]");
-      form?.requestSubmit();
-    }, 50);
-  };
-
   const handleCopy = async (id: string, text: string) => {
     try {
       if (typeof window !== "undefined") {
@@ -731,72 +674,6 @@ export function ChatContainer({
         isDeploying={isDeploying}
       />
 
-      {/* ── Templates Modal ── */}
-      <AnimatePresence>
-        {showTemplates && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="cc-templates-overlay"
-            onClick={() => setShowTemplates(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, y: -8, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -8, scale: 0.98 }}
-              transition={{ duration: 0.2 }}
-              className="cc-templates-box"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="cc-templates-hd">
-                <div>
-                  <div style={{ fontSize: 16, fontWeight: 600, color: "var(--cc-text-0)" }}>
-                    Workflow Templates
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--cc-text-2)", marginTop: 2 }}>
-                    Start from a proven automation pattern
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowTemplates(false)}
-                  className="cc-panel__close"
-                  type="button"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="cc-templates-grid">
-                {STARTER_TEMPLATES.map((tpl) => (
-                  <button
-                    key={tpl.title}
-                    className="cc-tcard"
-                    onClick={() => {
-                      setShowTemplates(false);
-                      handleSuggestionClick(tpl.prompt);
-                    }}
-                    type="button"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span style={{ fontSize: 14 }}>{tpl.icons.join(" ")}</span>
-                    </div>
-                    <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--cc-text-0)", marginTop: 4 }}>
-                      {tpl.title}
-                    </div>
-                    <div style={{ fontSize: 12, color: "var(--cc-text-2)", lineHeight: 1.5 }}>
-                      {tpl.desc}
-                    </div>
-                    <div style={{ fontSize: 11, color: "var(--cc-text-3)", fontFamily: "var(--cc-mono)" }}>
-                      {tpl.meta}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <div className="cc-app">
         {/* ── Header ── */}
         <header className="cc-header">
@@ -861,17 +738,6 @@ export function ChatContainer({
                     >
                       <Star className={`h-3.5 w-3.5 ${isStarred ? "fill-amber-400 text-amber-400" : ""}`} />
                       {isStarred ? "Unfavorite" : "Favorite"}
-                    </button>
-                    <div style={{ height: 1, background: "var(--cc-border-subtle)", margin: "4px 6px" }} />
-                    <button
-                      onClick={() => {
-                        setShowTemplates(true);
-                        setIsDropdownOpen(false);
-                      }}
-                      className="cc-proj-menu__item"
-                      type="button"
-                    >
-                      <LayoutGrid className="h-3.5 w-3.5" /> Browse Templates
                     </button>
                     <Link
                       href="/dashboard"
@@ -960,24 +826,20 @@ export function ChatContainer({
               aria-label="Conversation workspace"
             >
               <div className="cc-chat__msgs">
-                {!hasMessages ? (
-                  <EmptyState
-                    onSuggestionClick={handleSuggestionClick}
-                    onShowTemplates={() => setShowTemplates(true)}
-                  />
-                ) : (
-                  <MessageList
-                    aiMessages={aiMessages}
-                    notices={visibleNotices}
-                    isGenerating={isGenerating}
-                    hoveredMsgId={hoveredMsgId}
-                    copiedId={copiedId}
-                    onHoverMsg={setHoveredMsgId}
-                    onCopy={handleCopy}
-                    onEdit={handleEditMessage}
-                    messagesEndRef={messagesEndRef}
-                  />
-                )}
+                {/* Chat page always renders MessageList. Initial prompt
+                    arrives from /dashboard via the `?prompt=` URL param
+                    and auto-submits on mount. No empty state needed. */}
+                <MessageList
+                  aiMessages={aiMessages}
+                  notices={visibleNotices}
+                  isGenerating={isGenerating}
+                  hoveredMsgId={hoveredMsgId}
+                  copiedId={copiedId}
+                  onHoverMsg={setHoveredMsgId}
+                  onCopy={handleCopy}
+                  onEdit={handleEditMessage}
+                  messagesEndRef={messagesEndRef}
+                />
               </div>
             </div>
 
