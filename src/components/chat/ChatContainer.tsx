@@ -150,32 +150,22 @@ export function ChatContainer({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const hasAutoSubmitted = useRef(false);
 
+  // ── Transient UI state (not persisted) ─────────────────────────
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isClient, setIsClient] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [inputText, setInputText] = useState("");
-  const [isTesting, setIsTesting] = useState(false);
-  const [hasTested, setHasTested] = useState(false);
-  const [isDeploying, setIsDeploying] = useState(false);
-  const [hasDeployed, setHasDeployed] = useState(false);
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [fileErrors, setFileErrors] = useState<string[]>([]);
-  const [ultraThinking] = useState(ultraThinkingProp);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
 
+  // ── Persisted workspace state (chat-store, per chatId) ─────────
   const { sessions, updateSession, setNodes: setStoreNodes } = useChatStore();
   const session = sessions[chatId];
-
-  const chatTitle = isClient
-    ? session?.chatTitle || generateTitle(initialPrompt || "")
-    : generateTitle(initialPrompt || "");
-  const [draftTitle, setDraftTitle] = useState(chatTitle);
-  const isStarred = isClient ? session?.isStarred || false : false;
 
   const defaultNodes: FlowNode[] = [
     { id: "n1", type: "trigger", label: "Form Submission", status: "completed", detail: "Awaiting incoming form data" },
@@ -183,9 +173,48 @@ export function ChatContainer({
     { id: "n3", type: "action", label: "Send Notification", status: "pending" },
   ];
 
-  const step = isClient ? session?.step || "boot" : "boot";
-  const workspaceState = isClient ? session?.workspaceState || "understanding" : "understanding";
-  const nodes = isClient ? session?.nodes || defaultNodes : defaultNodes;
+  // SSR-safe reads: defaults during pre-hydration, real session after.
+  const chatTitle = isClient
+    ? session?.chatTitle || generateTitle(initialPrompt || "")
+    : generateTitle(initialPrompt || "");
+  const [draftTitle, setDraftTitle] = useState(chatTitle);
+  const isStarred = isClient ? session?.isStarred ?? false : false;
+  const step = isClient ? session?.step ?? "boot" : "boot";
+  const workspaceState = isClient ? session?.workspaceState ?? "understanding" : "understanding";
+  const nodes = isClient ? session?.nodes ?? defaultNodes : defaultNodes;
+  const isPanelOpen = isClient ? session?.panelOpen ?? false : false;
+  const isTesting = isClient ? session?.isTesting ?? false : false;
+  const hasTested = isClient ? session?.hasTested ?? false : false;
+  const isDeploying = isClient ? session?.isDeploying ?? false : false;
+  const hasDeployed = isClient ? session?.hasDeployed ?? false : false;
+  // Ultra-thinking: URL param overrides stored value on first mount; persisted thereafter.
+  const ultraThinking = isClient ? session?.ultraThinking ?? ultraThinkingProp : ultraThinkingProp;
+  const autoSubmittedAt = isClient ? session?.autoSubmittedAt ?? null : null;
+
+  // ── Workspace setters (route through updateSession for updatedAt) ──
+  const setIsPanelOpen = useCallback(
+    (next: boolean | ((prev: boolean) => boolean)) => {
+      const value = typeof next === "function" ? next(isPanelOpen) : next;
+      updateSession(chatId, { panelOpen: value });
+    },
+    [chatId, isPanelOpen, updateSession],
+  );
+  const setIsTesting = useCallback(
+    (value: boolean) => updateSession(chatId, { isTesting: value }),
+    [chatId, updateSession],
+  );
+  const setHasTested = useCallback(
+    (value: boolean) => updateSession(chatId, { hasTested: value }),
+    [chatId, updateSession],
+  );
+  const setIsDeploying = useCallback(
+    (value: boolean) => updateSession(chatId, { isDeploying: value }),
+    [chatId, updateSession],
+  );
+  const setHasDeployed = useCallback(
+    (value: boolean) => updateSession(chatId, { hasDeployed: value }),
+    [chatId, updateSession],
+  );
 
   // Ephemeral system notices (test/deploy confirmations, provider errors).
   // Not persisted, not part of model conversation. Distinct from user/assistant
@@ -326,12 +355,35 @@ export function ChatContainer({
     titleInputRef.current?.select();
   }, [isEditingTitle]);
 
+  /**
+   * Auto-submit initial prompt — guarded by persisted `autoSubmittedAt` so
+   * React StrictMode double-mount, Fast Refresh, and route revisits don't
+   * trigger duplicate LLM calls (which would double-bill credits).
+   *
+   * The previous in-memory `useRef` guard reset on every fresh mount.
+   * The persisted guard reset on every fresh mount UNTIL React re-rendered
+   * with the new value (race between Zustand set() and React render).
+   *
+   * Fix: read `autoSubmittedAt` from `useChatStore.getState()` directly
+   * inside the effect — this returns the live Zustand value, bypassing the
+   * stale render snapshot. Also write before submitPrompt to close the
+   * window where two near-simultaneous effects both see null.
+   */
   useEffect(() => {
-    if (initialPrompt && !hasAutoSubmitted.current) {
-      hasAutoSubmitted.current = true;
-      submitPrompt(initialPrompt);
-    }
-  }, [initialPrompt, submitPrompt]);
+    if (!isClient || !initialPrompt) return;
+    if (hasAutoSubmitted.current) return;
+    // Live read — not the React-render-captured value.
+    const liveSession = useChatStore.getState().sessions[chatId];
+    if (liveSession?.autoSubmittedAt != null) return;
+    // Set the persistent guard BEFORE firing the request so a parallel
+    // mount sees the non-null timestamp on its getState() check.
+    hasAutoSubmitted.current = true;
+    updateSession(chatId, {
+      autoSubmittedAt: Date.now(),
+      ultraThinking: ultraThinkingProp,
+    });
+    submitPrompt(initialPrompt);
+  }, [isClient, initialPrompt, chatId, updateSession, submitPrompt, ultraThinkingProp]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -543,8 +595,18 @@ export function ChatContainer({
           break;
         case "/clear":
           setNotices([]);
-          setWorkspaceState("understanding");
-          setStep("boot");
+          // Reset workspace lifecycle but keep title/starred.
+          updateSession(chatId, {
+            workspaceState: "understanding",
+            step: "boot",
+            isTesting: false,
+            hasTested: false,
+            isDeploying: false,
+            hasDeployed: false,
+            panelOpen: false,
+            autoSubmittedAt: null,
+          });
+          hasAutoSubmitted.current = false;
           break;
         case "/status":
           pushNotice(`Status: ${systemPhase} · ${nodes.length} nodes · ${step}`, "info");

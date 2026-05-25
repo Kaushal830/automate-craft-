@@ -3,21 +3,27 @@ import { persist } from 'zustand/middleware';
 import type { FlowNode } from '../components/chat/InteractiveCanvas';
 
 /**
- * Zustand chat store.
+ * Zustand chat store — unified workspace state model.
  *
- * Stores ONLY session metadata: title, starred flag, workflow nodes, and
- * workspace lifecycle state. Does NOT store messages — the canonical message
- * source is AI SDK `useChat` (Phase 2 normalization). System notices are
- * ephemeral local state in ChatContainer.
+ * One persisted record per chatId. Holds:
+ *   - identity        : chatTitle, isStarred, updatedAt
+ *   - conversation    : step (lifecycle phase), workspaceState (canvas vs chat)
+ *   - workflow        : nodes (generated graph)
+ *   - workspace shell : panelOpen, panelWidthPct (Phase 6 resize)
+ *   - run lifecycle   : isTesting, hasTested, isDeploying, hasDeployed
+ *   - generation mode : ultraThinking
+ *   - auto-submit gate: autoSubmittedAt (persists across StrictMode remounts
+ *                       and route revisits, prevents duplicate LLM calls)
  *
- * Old persisted entries with a `messages: Message[]` field are tolerated
- * (extra fields ignored by Zustand persist middleware).
+ * NOT in this store (intentional):
+ *   - conversation messages → owned by AI SDK `useChat` (Phase 2 canonical)
+ *   - transient UI (hover, dropdown open, input text) → local React state
+ *   - ephemeral notices → local React state in ChatContainer
  */
 
 /**
- * @deprecated Kept only for backward type imports from older revisions.
- * No new code should reference this type. Conversation messages are owned
- * by useChat (AI SDK).
+ * @deprecated Conversation messages are owned by useChat. Kept only so
+ * older imports compile; do not reference in new code.
  */
 export type Message = {
   id: string;
@@ -28,14 +34,48 @@ export type Message = {
 };
 
 export type ChatSequenceStep = "boot" | "wait_message" | "ready" | "deployed";
-export type WorkspaceState = "understanding" | "collecting_inputs" | "ready_to_build" | "canvas_visible";
+export type WorkspaceState =
+  | "understanding"
+  | "collecting_inputs"
+  | "ready_to_build"
+  | "canvas_visible";
 
 export interface ChatSession {
+  /* ── identity ─────────────────────────────────────────────────── */
   chatTitle: string;
   isStarred: boolean;
+  /** Last mutation timestamp. Drives EmptyState recents ordering. */
+  updatedAt: number;
+
+  /* ── conversation lifecycle ──────────────────────────────────── */
   step: ChatSequenceStep;
   workspaceState: WorkspaceState;
+
+  /* ── workflow output ─────────────────────────────────────────── */
   nodes: FlowNode[];
+
+  /* ── workspace shell ─────────────────────────────────────────── */
+  panelOpen: boolean;
+  /** Side-panel width as percentage of viewport. Clamped 30–70. */
+  panelWidthPct: number;
+
+  /* ── run lifecycle ───────────────────────────────────────────── */
+  isTesting: boolean;
+  hasTested: boolean;
+  isDeploying: boolean;
+  hasDeployed: boolean;
+
+  /* ── generation mode ─────────────────────────────────────────── */
+  ultraThinking: boolean;
+
+  /* ── auto-submit dedup ───────────────────────────────────────── */
+  /**
+   * Timestamp when the initial-prompt auto-submit fired for this chat.
+   * Set once on first submit, guards against duplicate calls under React
+   * StrictMode remount, Fast Refresh, and route revisits. Cleared only
+   * when the chat is explicitly reset (/clear).
+   */
+  autoSubmittedAt: number | null;
 }
 
 interface ChatStore {
@@ -44,19 +84,37 @@ interface ChatStore {
   updateSession: (id: string, update: Partial<ChatSession>) => void;
   updateNode: (id: string, nodeId: string, update: Partial<FlowNode>) => void;
   setNodes: (id: string, nodes: FlowNode[]) => void;
+  resetSession: (id: string) => void;
 }
 
 const defaultSession: ChatSession = {
   chatTitle: "New Automation",
   isStarred: false,
+  updatedAt: 0,
   step: "boot",
   workspaceState: "understanding",
   nodes: [
     { id: "n1", type: "trigger", label: "Form Submission", status: "completed", detail: "Awaiting incoming form data" },
     { id: "n2", type: "process", label: "AI Analysis", status: "pending" },
-    { id: "n3", type: "action", label: "Send Notification", status: "pending" }
+    { id: "n3", type: "action", label: "Send Notification", status: "pending" },
   ],
+  panelOpen: false,
+  panelWidthPct: 50,
+  isTesting: false,
+  hasTested: false,
+  isDeploying: false,
+  hasDeployed: false,
+  ultraThinking: false,
+  autoSubmittedAt: null,
 };
+
+/**
+ * Touch updatedAt on every mutation. Centralizes the rule so call sites
+ * don't have to remember.
+ */
+function withTouched(session: ChatSession): ChatSession {
+  return { ...session, updatedAt: Date.now() };
+}
 
 export const useChatStore = create<ChatStore>()(
   persist(
@@ -70,10 +128,10 @@ export const useChatStore = create<ChatStore>()(
         set((state) => ({
           sessions: {
             ...state.sessions,
-            [id]: {
+            [id]: withTouched({
               ...(state.sessions[id] || defaultSession),
               ...update,
-            },
+            }),
           },
         }));
       },
@@ -84,12 +142,12 @@ export const useChatStore = create<ChatStore>()(
           return {
             sessions: {
               ...state.sessions,
-              [id]: {
+              [id]: withTouched({
                 ...session,
                 nodes: session.nodes.map((n) =>
-                  n.id === nodeId ? { ...n, ...update } : n
+                  n.id === nodeId ? { ...n, ...update } : n,
                 ),
-              },
+              }),
             },
           };
         });
@@ -100,17 +158,38 @@ export const useChatStore = create<ChatStore>()(
           return {
             sessions: {
               ...state.sessions,
-              [id]: {
-                ...session,
-                nodes,
-              },
+              [id]: withTouched({ ...session, nodes }),
             },
           };
         });
       },
+      resetSession: (id) => {
+        set((state) => ({
+          sessions: {
+            ...state.sessions,
+            [id]: withTouched({ ...defaultSession }),
+          },
+        }));
+      },
     }),
     {
       name: "chat-storage",
-    }
-  )
+      version: 2,
+      migrate: (persisted, version) => {
+        // v1 → v2: workspace fields added with defaults; drop old `messages`.
+        if (!persisted || typeof persisted !== "object") return persisted;
+        const state = persisted as { sessions?: Record<string, Partial<ChatSession> & { messages?: unknown }> };
+        if (version < 2 && state.sessions) {
+          const migrated: Record<string, ChatSession> = {};
+          for (const [id, raw] of Object.entries(state.sessions)) {
+            const { messages: _drop, ...rest } = raw;
+            void _drop;
+            migrated[id] = { ...defaultSession, ...rest };
+          }
+          return { ...state, sessions: migrated };
+        }
+        return persisted;
+      },
+    },
+  ),
 );
