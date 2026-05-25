@@ -183,6 +183,7 @@ export function ChatContainer({
   const workspaceState = isClient ? session?.workspaceState ?? "understanding" : "understanding";
   const nodes = isClient ? session?.nodes ?? defaultNodes : defaultNodes;
   const isPanelOpen = isClient ? session?.panelOpen ?? false : false;
+  const panelWidthPct = isClient ? session?.panelWidthPct ?? 50 : 50;
   const isTesting = isClient ? session?.isTesting ?? false : false;
   const hasTested = isClient ? session?.hasTested ?? false : false;
   const isDeploying = isClient ? session?.isDeploying ?? false : false;
@@ -406,6 +407,68 @@ export function ChatContainer({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  /**
+   * Split-panel resize.
+   *
+   * Drag the divider between chat pane and side panel to change their
+   * relative widths. Clamped to [30%, 70%] panel width. Persisted to
+   * Zustand per chatId so the user's choice survives reloads.
+   *
+   * Implementation: mousedown captures starting cursor X and the main
+   * container width; global mousemove updates panelWidthPct on the
+   * store; mouseup ends the drag. Mouse cursor is forced to col-resize
+   * during drag via body class to prevent flicker over child elements.
+   */
+  const mainGridRef = useRef<HTMLDivElement>(null);
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeStateRef = useRef<{
+    startX: number;
+    startPct: number;
+    containerWidth: number;
+  } | null>(null);
+
+  const onResizeStart = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const container = mainGridRef.current;
+      if (!container) return;
+      resizeStateRef.current = {
+        startX: e.clientX,
+        startPct: panelWidthPct,
+        containerWidth: container.getBoundingClientRect().width,
+      };
+      setIsResizing(true);
+    },
+    [panelWidthPct],
+  );
+
+  useEffect(() => {
+    if (!isResizing) return;
+    const onMove = (e: MouseEvent) => {
+      const st = resizeStateRef.current;
+      if (!st || st.containerWidth <= 0) return;
+      const deltaPx = e.clientX - st.startX;
+      const deltaPct = (deltaPx / st.containerWidth) * 100;
+      // Panel sits on the right — dragging the handle LEFT enlarges it.
+      const nextPct = Math.max(30, Math.min(70, st.startPct - deltaPct));
+      updateSession(chatId, { panelWidthPct: nextPct });
+    };
+    const onUp = () => {
+      setIsResizing(false);
+      resizeStateRef.current = null;
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [isResizing, chatId, updateSession]);
 
   /**
    * Streaming-safe auto-scroll.
@@ -884,7 +947,15 @@ export function ChatContainer({
         </header>
 
         {/* ── Main grid ── */}
-        <div className={`cc-main${isPanelOpen && isCanvasVisible ? " has-panel" : ""}`}>
+        <div
+          ref={mainGridRef}
+          className={`cc-main${isPanelOpen && isCanvasVisible ? " has-panel" : ""}`}
+          style={
+            isPanelOpen && isCanvasVisible
+              ? { gridTemplateColumns: `${100 - panelWidthPct}% 6px ${panelWidthPct}%` }
+              : undefined
+          }
+        >
           {/* ── Chat pane ── */}
           <div className="cc-chat-pane">
             <div
@@ -969,7 +1040,16 @@ export function ChatContainer({
 
           {/* ── Resize handle ── */}
           {isPanelOpen && isCanvasVisible && (
-            <div className="cc-resize-handle" />
+            <div
+              className={`cc-resize-handle${isResizing ? " is-dragging" : ""}`}
+              onMouseDown={onResizeStart}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize panel"
+              aria-valuenow={Math.round(panelWidthPct)}
+              aria-valuemin={30}
+              aria-valuemax={70}
+            />
           )}
 
           {/* ── Side panel ── */}
