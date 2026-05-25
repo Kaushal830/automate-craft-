@@ -1,23 +1,35 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, CheckCircle2, Home, Star, Sparkles, Pencil, PanelRight, X, ChevronsDown, HelpCircle } from "lucide-react";
+import {
+  ArrowRight,
+  ChevronDown,
+  ChevronsDown,
+  HelpCircle,
+  LayoutGrid,
+  PanelRight,
+  Pencil,
+  Star,
+  X,
+  Zap,
+} from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import { useChatStore } from "@/store/chat-store";
 import type { FlowNode } from "./InteractiveCanvas";
-import type { ChatSequenceStep, WorkspaceState, Message } from "@/store/chat-store";
+import type { ChatSequenceStep, Message, WorkspaceState } from "@/store/chat-store";
 import { SystemStatusBar, type SystemPhase } from "./SystemStatusBar";
 import { CommandPalette } from "./CommandPalette";
 import { useAutomationChat } from "@/hooks/useAutomationChat";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
 import { EmptyState } from "./EmptyState";
+import { getFileCategory, processFiles, validateFile } from "@/lib/file-utils";
 
 const InteractiveCanvas = dynamic(
   () => import("./InteractiveCanvas").then((mod) => mod.InteractiveCanvas),
-  { ssr: false }
+  { ssr: false },
 );
 
 const helpTips = [
@@ -27,6 +39,52 @@ const helpTips = [
   "Test the automation before deploying it.",
 ];
 
+/* ── Templates (connected to suggestion system) ── */
+const STARTER_TEMPLATES = [
+  {
+    title: "Email Follow-up",
+    desc: "Automate my email follow-up workflow after form submissions",
+    icons: ["📧", "🔄"],
+    meta: "2 steps · Email + Forms",
+    prompt: "Automate my email follow-up workflow",
+  },
+  {
+    title: "Sheets → CRM Sync",
+    desc: "Sync new Google Sheets rows to CRM contacts automatically",
+    icons: ["📊", "💼"],
+    meta: "3 steps · Sheets + CRM",
+    prompt: "Sync Google Sheets data to my CRM",
+  },
+  {
+    title: "Form Alert Pipeline",
+    desc: "Send instant alerts via email and Slack when forms are submitted",
+    icons: ["📋", "🔔"],
+    meta: "2 steps · Forms + Notifications",
+    prompt: "Send alerts when a form is submitted",
+  },
+  {
+    title: "WhatsApp Leads",
+    desc: "Route WhatsApp messages to your lead pipeline with AI triage",
+    icons: ["💬", "🎯"],
+    meta: "3 steps · WhatsApp + AI",
+    prompt: "Connect WhatsApp to my lead pipeline",
+  },
+  {
+    title: "Slack Digest Bot",
+    desc: "Summarize daily activity across tools and post to Slack",
+    icons: ["💬", "📊"],
+    meta: "3 steps · Multi-source + Slack",
+    prompt: "Create a daily Slack digest summarizing activity across my tools",
+  },
+  {
+    title: "Invoice Processor",
+    desc: "Extract data from uploaded invoices and log to accounting",
+    icons: ["🧾", "💰"],
+    meta: "2 steps · AI + Accounting",
+    prompt: "Build an invoice processing automation that extracts data and logs to accounting",
+  },
+];
+
 interface ChatContainerProps {
   chatId: string;
   initialPrompt?: string;
@@ -34,6 +92,7 @@ interface ChatContainerProps {
 }
 
 const stopWords = ["the", "a", "an", "is", "for", "to", "when", "on", "and", "in", "it"];
+
 function generateTitle(prompt: string): string {
   const normalizedPrompt = prompt.toLowerCase().replace(/[^a-z0-9\s]/g, " ");
   if (!normalizedPrompt.trim()) return "New Automation";
@@ -59,35 +118,70 @@ function sanitizeCustomTitle(value: string) {
   return value.replace(/[^\w\s-]/g, "").replace(/\s+/g, " ").trim().slice(0, 40);
 }
 
-export function ChatContainer({ chatId, initialPrompt, ultraThinking: ultraThinkingProp = false }: ChatContainerProps) {
+function isTransientSystemError(message: Message) {
+  return (
+    message.role !== "user" &&
+    /not enough credits|ai provider error|request failed|failed to fetch/i.test(message.content)
+  );
+}
+
+export function ChatContainer({
+  chatId,
+  initialPrompt,
+  ultraThinking: ultraThinkingProp = false,
+}: ChatContainerProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const helpRef = useRef<HTMLDivElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const currentAutomationRef = useRef<{ trigger?: string; action?: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const hasAutoSubmitted = useRef(false);
+
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIsDropdownOpen(false);
-      }
-      if (helpRef.current && !helpRef.current.contains(e.target as Node)) {
-        setIsHelpOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  const [isClient, setIsClient] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [inputText, setInputText] = useState("");
+  const [isTesting, setIsTesting] = useState(false);
+  const [hasTested, setHasTested] = useState(false);
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [hasDeployed, setHasDeployed] = useState(false);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [fileErrors, setFileErrors] = useState<string[]>([]);
+  const [ultraThinking] = useState(ultraThinkingProp);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   const { sessions, updateSession, setNodes: setStoreNodes } = useChatStore();
-  const [isClient, setIsClient] = useState(false);
-  useEffect(() => setIsClient(true), []);
   const session = sessions[chatId];
 
-  const chatTitle = isClient ? (session?.chatTitle || generateTitle(initialPrompt || "")) : generateTitle(initialPrompt || "");
+  const chatTitle = isClient
+    ? session?.chatTitle || generateTitle(initialPrompt || "")
+    : generateTitle(initialPrompt || "");
   const [draftTitle, setDraftTitle] = useState(chatTitle);
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const isStarred = isClient ? (session?.isStarred || false) : false;
+  const isStarred = isClient ? session?.isStarred || false : false;
+
+  const defaultMessages: Message[] = [];
+  const defaultNodes: FlowNode[] = [
+    { id: "n1", type: "trigger", label: "Form Submission", status: "completed", detail: "Awaiting incoming form data" },
+    { id: "n2", type: "process", label: "AI Analysis", status: "pending" },
+    { id: "n3", type: "action", label: "Send Notification", status: "pending" },
+  ];
+
+  const visibleMessages = (items: Message[]) => items.filter((message) => message.id !== "init-sys");
+  const rawMessages = isClient ? session?.messages || defaultMessages : defaultMessages;
+  const step = isClient ? session?.step || "boot" : "boot";
+  const workspaceState = isClient ? session?.workspaceState || "understanding" : "understanding";
+  const nodes = isClient ? session?.nodes || defaultNodes : defaultNodes;
+  const messages = visibleMessages(rawMessages).filter(
+    (message) => workspaceState !== "canvas_visible" || !isTransientSystemError(message),
+  );
 
   const setChatTitle = (update: string | ((prev: string) => string)) => {
     const next = typeof update === "function" ? update(chatTitle) : update;
@@ -99,44 +193,11 @@ export function ChatContainer({ chatId, initialPrompt, ultraThinking: ultraThink
     updateSession(chatId, { isStarred: next });
   };
 
-  useEffect(() => {
-    if (!isEditingTitle) return;
-    titleInputRef.current?.focus();
-    titleInputRef.current?.select();
-  }, [isEditingTitle]);
-
-  const saveTitle = () => {
-    const nextTitle = sanitizeCustomTitle(draftTitle);
-    if (!nextTitle) {
-      setDraftTitle(chatTitle);
-      setIsEditingTitle(false);
-      return;
-    }
-    setChatTitle(nextTitle);
-    setDraftTitle(nextTitle);
-    setIsEditingTitle(false);
-  };
-
-  const defaultMessages: Message[] = initialPrompt
-    ? [
-        { id: "init-user", role: "user", content: initialPrompt, timestamp: Date.now() },
-        { id: "init-sys", role: "system", content: "Understanding your automation...", timestamp: Date.now() }
-      ]
-    : [];
-
-  const defaultNodes: FlowNode[] = [
-    { id: "n1", type: "trigger", label: "Form Submission", status: "completed", detail: "Awaiting incoming form data" },
-    { id: "n2", type: "process", label: "AI Analysis", status: "pending" },
-    { id: "n3", type: "action", label: "Send Notification", status: "pending" }
-  ];
-
-  const messages = isClient ? (session?.messages || defaultMessages) : defaultMessages;
-  const step = isClient ? (session?.step || "boot") : "boot";
-  const workspaceState = isClient ? (session?.workspaceState || "understanding") : "understanding";
-  const nodes = isClient ? (session?.nodes || defaultNodes) : defaultNodes;
-
   const setMessages = (update: Message[] | ((prev: Message[]) => Message[])) => {
-    const next = typeof update === "function" ? update(messages) : update;
+    const latestMessages = visibleMessages(
+      useChatStore.getState().sessions[chatId]?.messages || defaultMessages,
+    );
+    const next = typeof update === "function" ? update(latestMessages) : update;
     updateSession(chatId, { messages: next });
   };
 
@@ -151,28 +212,36 @@ export function ChatContainer({ chatId, initialPrompt, ultraThinking: ultraThink
   };
 
   const setNodes = (update: FlowNode[] | ((prev: FlowNode[]) => FlowNode[])) => {
-    const next = typeof update === "function" ? update(nodes) : update;
+    const latestNodes = useChatStore.getState().sessions[chatId]?.nodes || defaultNodes;
+    const next = typeof update === "function" ? update(latestNodes) : update;
     setStoreNodes(chatId, next);
   };
 
-  const [inputText, setInputText] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [isTesting, setIsTesting] = useState(false);
-  const [hasTested, setHasTested] = useState(false);
-  const [isDeploying, setIsDeploying] = useState(false);
-  const [hasDeployed, setHasDeployed] = useState(false);
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
-  const currentAutomationRef = useRef<any | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
-  const [ultraThinking, setUltraThinking] = useState(ultraThinkingProp);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
-  const [showScrollBtn, setShowScrollBtn] = useState(false);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const addMessage = (
+    role: "user" | "ai" | "system" | "thinking",
+    content: string,
+    newWorkspaceState?: WorkspaceState,
+  ) => {
+    const normalizedContent = content.trim();
+    if (!normalizedContent) return;
 
-  // ── Real AI Streaming via useAutomationChat ──────────────────────
+    const timestamp = Date.now();
+    const newMsg: Message = { id: crypto.randomUUID(), role, content: normalizedContent, timestamp };
+
+    setMessages((prev) => {
+      const isDuplicate = prev.some(
+        (message) =>
+          message.role === role &&
+          message.content === normalizedContent &&
+          typeof message.timestamp === "number" &&
+          Math.abs(timestamp - message.timestamp) < 2000,
+      );
+      return isDuplicate ? prev : [...prev, newMsg];
+    });
+
+    if (newWorkspaceState) setWorkspaceState(newWorkspaceState);
+  };
+
   const {
     messages: aiMessages,
     status: aiStatus,
@@ -182,30 +251,99 @@ export function ChatContainer({ chatId, initialPrompt, ultraThinking: ultraThink
     chatId,
     ultraThinking,
     onNodesUpdate: (newNodes) => {
+      const triggerNode = newNodes.find((node) => node.type === "trigger");
+      const actionNode = newNodes.find((node) => node.type === "action");
+      currentAutomationRef.current = {
+        trigger: triggerNode?.label,
+        action: actionNode?.label,
+      };
       setNodes(newNodes);
       setWorkspaceState("canvas_visible");
       setIsPanelOpen(true);
       setStep("ready");
     },
     onWorkflowBuilt: (name) => {
+      setMessages((prev) => prev.filter((message) => !isTransientSystemError(message)));
       if (name) setChatTitle(name);
     },
+    onErrorMessage: (message) => {
+      addMessage("system", message || "The AI request failed. Check the console/server logs.");
+      setWorkspaceState("understanding");
+    },
   });
-  const isGenerating = aiStatus === "streaming" || aiStatus === "submitted";
-  // ────────────────────────────────────────────────────────────────
 
-  // Relative time ticker
-  const [, setTick] = useState(0);
+  const isGenerating = aiStatus === "streaming" || aiStatus === "submitted";
+  const hasAssistantResponse = aiMessages.some((message) => message.role === "assistant");
+  const displayMessages = hasAssistantResponse
+    ? messages.filter(
+        (message) =>
+          !isTransientSystemError(message) ||
+          typeof message.timestamp !== "number" ||
+          Date.now() - message.timestamp < 30000,
+      )
+    : messages;
+
+  const isCanvasVisible = workspaceState === "canvas_visible";
+  const hasMessages = displayMessages.length > 0 || aiMessages.length > 0;
+  const isInputDisabled = isGenerating;
+
+  const composerPlaceholder = (() => {
+    if (step === "deployed") return "Need changes? Describe what to update...";
+    if (isCanvasVisible) return "Adjust the pipeline, add a step, or ask a question...";
+    if (hasMessages) return "Modify the workflow, or describe a new one...";
+    return "What would you like to build?";
+  })();
+
+  const systemPhase: SystemPhase = (() => {
+    if (step === "deployed") return "success";
+    if (hasTested) return "ready";
+    if (isTesting) return "testing";
+    if (isDeploying) return "deploying";
+    if (workspaceState === "ready_to_build" || isGenerating) return "building";
+    return "idle";
+  })();
+
+  useEffect(() => setIsClient(true), []);
+
   useEffect(() => {
-    const interval = setInterval(() => setTick((t) => t + 1), 30000);
+    if (!isEditingTitle) setDraftTitle(chatTitle);
+  }, [chatTitle, isEditingTitle]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+      if (helpRef.current && !helpRef.current.contains(e.target as Node)) {
+        setIsHelpOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (!isEditingTitle) return;
+    titleInputRef.current?.focus();
+    titleInputRef.current?.select();
+  }, [isEditingTitle]);
+
+  useEffect(() => {
+    if (initialPrompt && !hasAutoSubmitted.current) {
+      hasAutoSubmitted.current = true;
+      submitPrompt(initialPrompt);
+    }
+  }, [initialPrompt, submitPrompt]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setShowScrollBtn((current) => current);
+    }, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  // Task 5: Auto-focus textarea on load and on '/' press
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.focus();
-    }
+    textareaRef.current?.focus();
   }, []);
 
   useEffect(() => {
@@ -227,61 +365,117 @@ export function ChatContainer({ chatId, initialPrompt, ultraThinking: ultraThink
     scrollToBottom();
   }, [messages, aiMessages, isGenerating, scrollToBottom]);
 
-  // Task 6.1: detect scroll position for FAB
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
+
     const handleScroll = () => {
       const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
       setShowScrollBtn(distFromBottom > 200);
     };
+
     el.addEventListener("scroll", handleScroll, { passive: true });
     return () => el.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const handleFileAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const newFiles = Array.from(e.target.files);
-      setAttachedFiles(prev => [...prev, ...newFiles]);
+  const saveTitle = () => {
+    const nextTitle = sanitizeCustomTitle(draftTitle);
+    if (!nextTitle) {
+      setDraftTitle(chatTitle);
+      setIsEditingTitle(false);
+      return;
     }
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    setChatTitle(nextTitle);
+    setDraftTitle(nextTitle);
+    setIsEditingTitle(false);
   };
+
+  const addValidatedFiles = useCallback((incoming: File[]) => {
+    setAttachedFiles((prev) => {
+      let currentImageCount = prev.filter((file) => getFileCategory(file) === "image").length;
+      const errors: string[] = [];
+      const accepted: File[] = [];
+
+      for (const file of incoming) {
+        if (prev.some((existing) => existing.name === file.name) || accepted.some((existing) => existing.name === file.name)) {
+          errors.push(`"${file.name}" is already attached.`);
+          continue;
+        }
+
+        const result = validateFile(file, currentImageCount);
+        if (!result.valid) {
+          errors.push(result.error!);
+          continue;
+        }
+
+        if (getFileCategory(file) === "image") currentImageCount++;
+        accepted.push(file);
+      }
+
+      if (errors.length > 0) {
+        setFileErrors((current) => [...current, ...errors]);
+        setTimeout(() => {
+          setFileErrors((current) => current.slice(errors.length));
+        }, 5000);
+      }
+
+      return [...prev, ...accepted];
+    });
+  }, []);
+
+  const handleFileAttach = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files) {
+        addValidatedFiles(Array.from(e.target.files));
+      }
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    },
+    [addValidatedFiles],
+  );
+
+  const handleFileDrop = useCallback(
+    (files: File[]) => {
+      addValidatedFiles(files);
+    },
+    [addValidatedFiles],
+  );
+
+  const dismissFileError = useCallback((idx: number) => {
+    setFileErrors((prev) => prev.filter((_, i) => i !== idx));
+  }, []);
 
   const removeFile = (name: string) => {
-    setAttachedFiles(prev => prev.filter(f => f.name !== name));
-  };
-
-  const addMessage = (role: "user" | "ai" | "system" | "thinking", content: string, newWorkspaceState?: WorkspaceState, formDef?: any, isReadyCard?: boolean) => {
-    const newMsg: Message = { id: crypto.randomUUID(), role, content, timestamp: Date.now() };
-    if (formDef) newMsg.form = formDef;
-    if (isReadyCard) newMsg.isReadyCard = true;
-    setMessages((prev) => [...prev, newMsg]);
-    if (newWorkspaceState) setWorkspaceState(newWorkspaceState);
-  };
-
-  const handleFormSubmit = (msgId: string, values: any) => {
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === msgId ? { ...m, isFormSubmitted: true, formValues: values } : m
-      )
-    );
+    setAttachedFiles((prev) => prev.filter((file) => file.name !== name));
   };
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!inputText.trim() && attachedFiles.length === 0) return;
-    if (isGenerating) return;
+    if ((!inputText.trim() && attachedFiles.length === 0) || isGenerating) return;
 
-    let input = inputText.trim();
-    if (attachedFiles.length > 0) {
-      input += `\n[Attached Files: ${attachedFiles.map(f => f.name).join(", ")}]`;
-    }
+    const input = inputText.trim();
+    const filesToProcess = [...attachedFiles];
+
     setInputText("");
     setAttachedFiles([]);
+    setFileErrors([]);
     setWorkspaceState("ready_to_build");
 
-    // Route to real AI streaming
-    submitPrompt(input);
+    if (filesToProcess.length > 0) {
+      try {
+        const processed = await processFiles(filesToProcess);
+        await submitPrompt(input, processed);
+      } catch (err) {
+        console.error("[ChatContainer] File processing error:", err);
+        if (!input) {
+          addMessage("system", "File processing failed. Please try a smaller or supported file.");
+          setWorkspaceState("understanding");
+          return;
+        }
+        await submitPrompt(input);
+      }
+    } else {
+      await submitPrompt(input);
+    }
   };
 
   const handleTest = async () => {
@@ -289,57 +483,38 @@ export function ChatContainer({ chatId, initialPrompt, ultraThinking: ultraThink
     setIsPanelOpen(true);
 
     for (let i = 0; i < nodes.length; i++) {
-      setNodes(n => n.map((x, idx) =>
-        idx === i ? { ...x, status: "active" } : idx < i ? { ...x, status: "completed" } : x
-      ));
-      await new Promise(r => setTimeout(r, 800));
+      setNodes((currentNodes) =>
+        currentNodes.map((node, idx) =>
+          idx === i ? { ...node, status: "active" } : idx < i ? { ...node, status: "completed" } : node,
+        ),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 800));
     }
-    setNodes(n => n.map(x => ({ ...x, status: "completed" })));
-    await new Promise(r => setTimeout(r, 400));
+
+    setNodes((currentNodes) => currentNodes.map((node) => ({ ...node, status: "completed" })));
+    await new Promise((resolve) => setTimeout(resolve, 400));
 
     setIsTesting(false);
     setHasTested(true);
-    submitPrompt("__system_test_passed__");
-    addMessage("ai", "**Test Passed ✓**\nAll pipeline steps executed without errors. Your automation is ready to deploy.");
+    addMessage("system", "Test passed. All pipeline steps executed without errors.");
   };
 
   const handleDeploy = async () => {
     setIsDeploying(true);
-    await new Promise(r => setTimeout(r, 1800));
+    await new Promise((resolve) => setTimeout(resolve, 1800));
     setIsDeploying(false);
     setHasDeployed(true);
     setStep("deployed");
-    addMessage("ai", "**Pipeline Deployed ✓**\nYour automation is now live and actively listening for incoming triggers.");
+    addMessage("system", "Pipeline deployed. Your automation is now live.");
   };
 
   const handleSuggestionClick = (suggestion: string) => {
     setInputText(suggestion);
     setTimeout(() => {
       const form = document.querySelector<HTMLFormElement>("form[data-chat-form]");
-      if (form) form.requestSubmit();
+      form?.requestSubmit();
     }, 50);
   };
-
-  const isInputDisabled = isGenerating;
-  const isCanvasVisible = workspaceState === "canvas_visible";
-  const hasMessages = messages.length > 0 || aiMessages.length > 0;
-
-  // Task 2.3: Context-aware placeholder
-  const composerPlaceholder = (() => {
-    if (step === "deployed") return "Need changes? Describe what to update...";
-    if (isCanvasVisible) return "Adjust the pipeline, add a step, or ask a question...";
-    if (hasMessages) return "Modify the workflow, or describe a new one...";
-    return "What would you like to build?";
-  })();
-
-  const systemPhase: SystemPhase = (() => {
-    if (step === "deployed") return "success";
-    if (hasTested) return "ready";
-    if (isTesting) return "testing";
-    if (isDeploying) return "deploying";
-    if (workspaceState === "ready_to_build" || isGenerating) return "building";
-    return "idle";
-  })();
 
   const handleCopy = async (id: string, text: string) => {
     try {
@@ -353,43 +528,135 @@ export function ChatContainer({ chatId, initialPrompt, ultraThinking: ultraThink
     }
   };
 
+  const handleEditMessage = (text: string) => {
+    setInputText(text);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  /* ── Slash command handler ── */
+  const handleSlashCommand = useCallback(
+    (cmd: string) => {
+      switch (cmd) {
+        case "/test":
+          if (isCanvasVisible && !isTesting && !hasTested) handleTest();
+          break;
+        case "/deploy":
+          if (hasTested && !isDeploying && !hasDeployed) handleDeploy();
+          break;
+        case "/clear":
+          setMessages([]);
+          setWorkspaceState("understanding");
+          setStep("boot");
+          break;
+        case "/status":
+          addMessage("system", `Status: ${systemPhase} · ${nodes.length} nodes · ${step}`);
+          break;
+        case "/help":
+          addMessage(
+            "system",
+            "Available commands: /test (run test), /deploy (deploy workflow), /clear (reset conversation), /status (show status), /help (show commands)"
+          );
+          break;
+        default:
+          break;
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [isCanvasVisible, isTesting, hasTested, isDeploying, hasDeployed, systemPhase, nodes.length, step],
+  );
+
   if (!isClient) {
-    return <div className="chat-shell-bg min-h-screen flex items-center justify-center">
-      <div className="h-8 w-8 rounded-full border-2 border-accent border-t-transparent animate-spin" />
-    </div>;
+    return (
+      <div className="cc-chat flex min-h-screen w-full items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--cc-accent)] border-t-transparent" />
+      </div>
+    );
   }
 
   return (
-    <div className="chat-shell-bg flex h-screen overflow-hidden selection:bg-accent/30 selection:text-white">
-      <CommandPalette 
+    <div className="cc-chat w-full h-full flex flex-col selection:bg-[var(--cc-accent)]/30 selection:text-white">
+      <CommandPalette
         onTest={handleTest}
         onDeploy={handleDeploy}
-        onTogglePreview={() => setIsPanelOpen(!isPanelOpen)}
+        onTogglePreview={() => setIsPanelOpen((current) => !current)}
         isCanvasVisible={isCanvasVisible}
         hasTested={hasTested}
         isDeploying={isDeploying}
       />
 
-      {/* ─── Main Chat Area ─── */}
-      <div className={`relative flex flex-col transition-all duration-500 ease-[0.22,1,0.36,1] h-full ${isPanelOpen && isCanvasVisible ? "w-1/2" : "w-full"} shrink-0`}>
-        
-        {/* TASK 4: Upgrade the Chat Header */}
-        <header className="chat-header-surface absolute top-0 left-0 right-0 z-40 flex h-[52px] items-center justify-between border-b px-4">
-          {/* Task 5.1: Breadcrumb navigation */}
-          <div className="flex items-center gap-1.5 w-1/3 min-w-0">
-            <Link href="/dashboard" className="text-[12px] text-white/40 hover:text-white/70 transition-colors shrink-0">
-              Dashboard
-            </Link>
-            <span className="text-[12px] text-white/20 shrink-0">/</span>
-            <span className="text-[12px] text-white/40 shrink-0">Automations</span>
-            <span className="text-[12px] text-white/20 shrink-0">/</span>
-            
-            <div className="relative min-w-0" ref={dropdownRef}>
-              <div
-                className="group flex items-center gap-1.5 rounded-md px-1.5 py-1 hover:bg-white/[0.04] transition-colors cursor-pointer min-w-0"
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              >
-                {isEditingTitle ? (
+      {/* ── Templates Modal ── */}
+      <AnimatePresence>
+        {showTemplates && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="cc-templates-overlay"
+            onClick={() => setShowTemplates(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: -8, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              className="cc-templates-box"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="cc-templates-hd">
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: "var(--cc-text-0)" }}>
+                    Workflow Templates
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--cc-text-2)", marginTop: 2 }}>
+                    Start from a proven automation pattern
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowTemplates(false)}
+                  className="cc-panel__close"
+                  type="button"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="cc-templates-grid">
+                {STARTER_TEMPLATES.map((tpl) => (
+                  <button
+                    key={tpl.title}
+                    className="cc-tcard"
+                    onClick={() => {
+                      setShowTemplates(false);
+                      handleSuggestionClick(tpl.prompt);
+                    }}
+                    type="button"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span style={{ fontSize: 14 }}>{tpl.icons.join(" ")}</span>
+                    </div>
+                    <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--cc-text-0)", marginTop: 4 }}>
+                      {tpl.title}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--cc-text-2)", lineHeight: 1.5 }}>
+                      {tpl.desc}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--cc-text-3)", fontFamily: "var(--cc-mono)" }}>
+                      {tpl.meta}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="cc-app">
+        {/* ── Header ── */}
+        <header className="cc-header">
+          <div className="cc-header__left">
+            <div className="cc-proj-wrap" ref={dropdownRef}>
+              {isEditingTitle ? (
+                <div className="flex h-8 items-center rounded-lg" style={{ border: "1px solid var(--cc-border)", background: "var(--cc-bg-input)", padding: "0 8px" }}>
                   <input
                     ref={titleInputRef}
                     value={draftTitle}
@@ -402,52 +669,83 @@ export function ChatContainer({ chatId, initialPrompt, ultraThinking: ultraThink
                         setIsEditingTitle(false);
                       }
                     }}
-                    className="bg-transparent text-[12px] font-medium text-white/90 outline-none w-[160px]"
+                    className="w-full min-w-0 bg-transparent text-[13px] font-semibold outline-none"
+                    style={{ color: "var(--cc-text-0)" }}
                   />
-                ) : (
-                  <span className="text-[12px] font-medium text-white/85 select-none truncate max-w-[180px]">{chatTitle}</span>
-                )}
-                {!isEditingTitle && <ChevronDown className={`h-3 w-3 text-white/40 transition-transform shrink-0 ${isDropdownOpen ? "rotate-180" : ""}`} />}
-              </div>
+                </div>
+              ) : (
+                <button
+                  className={`cc-proj-trigger${isDropdownOpen ? " is-open" : ""}`}
+                  onClick={() => setIsDropdownOpen((current) => !current)}
+                  type="button"
+                  aria-expanded={isDropdownOpen}
+                >
+                  <span className="truncate max-w-[48vw]">{chatTitle}</span>
+                  <ChevronDown className="cc-chev h-3.5 w-3.5" />
+                </button>
+              )}
 
               <AnimatePresence>
                 {isDropdownOpen && (
                   <motion.div
-                    initial={{ opacity: 0, y: 4, scale: 0.98 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 4, scale: 0.98 }}
-                    transition={{ duration: 0.15, ease: "easeOut" }}
-                    className="absolute left-0 top-full mt-1 w-52 rounded-xl border border-white/[0.08] bg-[#0c0d10] p-1 shadow-[0_16px_40px_rgba(0,0,0,0.5)] z-50"
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.14 }}
+                    className="cc-proj-menu"
                   >
                     <button
-                      onClick={() => { setIsEditingTitle(true); setIsDropdownOpen(false); }}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[12px] text-white/60 hover:bg-white/[0.04] hover:text-white"
+                      onClick={() => {
+                        setIsEditingTitle(true);
+                        setIsDropdownOpen(false);
+                      }}
+                      className="cc-proj-menu__item"
+                      type="button"
                     >
-                      <Pencil className="h-3 w-3" /> Rename
+                      <Pencil className="h-3.5 w-3.5" /> Rename
                     </button>
                     <button
-                      onClick={() => { setIsStarred(!isStarred); setIsDropdownOpen(false); }}
-                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[12px] text-white/60 hover:bg-white/[0.04] hover:text-white"
+                      onClick={() => {
+                        setIsStarred(!isStarred);
+                        setIsDropdownOpen(false);
+                      }}
+                      className="cc-proj-menu__item"
+                      type="button"
                     >
-                      <Star className={`h-3 w-3 ${isStarred ? "fill-amber-400 text-amber-400" : ""}`} /> 
+                      <Star className={`h-3.5 w-3.5 ${isStarred ? "fill-amber-400 text-amber-400" : ""}`} />
                       {isStarred ? "Unfavorite" : "Favorite"}
                     </button>
+                    <div style={{ height: 1, background: "var(--cc-border-subtle)", margin: "4px 6px" }} />
+                    <button
+                      onClick={() => {
+                        setShowTemplates(true);
+                        setIsDropdownOpen(false);
+                      }}
+                      className="cc-proj-menu__item"
+                      type="button"
+                    >
+                      <LayoutGrid className="h-3.5 w-3.5" /> Browse Templates
+                    </button>
+                    <Link
+                      href="/dashboard"
+                      className="cc-proj-menu__item"
+                    >
+                      <ArrowRight className="h-3.5 w-3.5" /> Dashboard
+                    </Link>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
           </div>
 
-          <div className="flex w-1/3 justify-center">
+          <div className="cc-header__right">
             <SystemStatusBar phase={systemPhase} />
-          </div>
 
-          <div className="flex w-1/3 justify-end items-center gap-2">
             <div className="relative" ref={helpRef}>
               <button
                 type="button"
                 onClick={() => setIsHelpOpen((current) => !current)}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-white/20 transition-all hover:bg-white/[0.04] hover:text-white/55"
+                className="cc-hbtn"
                 aria-label="Open workspace help"
                 aria-expanded={isHelpOpen}
               >
@@ -456,132 +754,153 @@ export function ChatContainer({ chatId, initialPrompt, ultraThinking: ultraThink
               <AnimatePresence>
                 {isHelpOpen ? (
                   <motion.div
-                    initial={{ opacity: 0, y: 5, scale: 0.98 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 5, scale: 0.98 }}
-                    transition={{ duration: 0.15, ease: "easeOut" }}
-                    className="absolute right-0 top-full z-50 mt-2 w-72 rounded-2xl border border-white/[0.08] bg-[#0c0d10] p-4 text-left shadow-[0_18px_48px_rgba(0,0,0,0.55)]"
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.14 }}
+                    className="cc-proj-menu"
+                    style={{ left: "auto", right: 0, width: 286 }}
                   >
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/25">
+                    <div style={{ padding: "8px 10px 4px", fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--cc-text-3)" }}>
                       Workspace guide
-                    </p>
-                    <div className="mt-3 space-y-2.5">
-                      {helpTips.map((tip, index) => (
-                        <div key={tip} className="flex gap-2.5 text-[12px] leading-5 text-white/55">
-                          <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-accent/15 bg-accent/8 text-[9px] font-semibold text-accent/80">
-                            {index + 1}
-                          </span>
-                          <span>{tip}</span>
-                        </div>
-                      ))}
                     </div>
+                    {helpTips.map((tip, index) => (
+                      <div key={tip} className="flex gap-2.5 px-2.5 py-1.5" style={{ fontSize: 12, color: "var(--cc-text-1)" }}>
+                        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full" style={{ border: "1px solid var(--cc-border)", fontSize: 10, color: "var(--cc-text-3)" }}>
+                          {index + 1}
+                        </span>
+                        <span>{tip}</span>
+                      </div>
+                    ))}
                   </motion.div>
                 ) : null}
               </AnimatePresence>
             </div>
+
             {isCanvasVisible && (
               <button
-                onClick={() => setIsPanelOpen(!isPanelOpen)}
-                className={`flex h-7 w-7 items-center justify-center rounded-lg transition-all ${
-                  isPanelOpen
-                    ? "bg-accent/10 text-accent hover:bg-accent/15"
-                    : "text-white/25 hover:bg-white/[0.04] hover:text-white/50"
-                }`}
+                onClick={() => setIsPanelOpen((current) => !current)}
+                className={`cc-hbtn ${isPanelOpen ? "!border-[var(--cc-accent-border)] !bg-[var(--cc-accent-dim)] !text-[var(--cc-accent)]" : ""}`}
                 aria-label={isPanelOpen ? "Hide preview" : "Show preview"}
+                type="button"
               >
                 <PanelRight className="h-3.5 w-3.5" />
               </button>
             )}
-            {/* Cmd+K hint */}
-            <div className="hidden sm:flex items-center gap-1 px-1.5 py-0.5 rounded border border-white/[0.05] bg-white/[0.015]">
-              <span className="text-[10px] font-medium text-white/20 tracking-widest">⌘K</span>
+
+            <div className="hidden sm:flex cc-hbtn" style={{ fontFamily: "var(--cc-mono)", fontSize: 10, color: "var(--cc-text-3)", cursor: "default" }}>
+              ⌘K
             </div>
           </div>
         </header>
 
-        {/* ─── Scrollable Area ─── */}
-        <div ref={scrollContainerRef} className="chat-scrollable absolute inset-0 overflow-y-auto overflow-x-hidden custom-scrollbar">
-          <div className="flex min-h-full flex-col">
-            <div className={`mx-auto w-full max-w-3xl flex-1 px-5 ${hasMessages ? "pt-[92px] pb-[140px]" : "pt-0 pb-0"}`}>
-              {!hasMessages ? (
-                <EmptyState onSuggestionClick={handleSuggestionClick} />
-              ) : (
-                <MessageList
-                  messages={messages}
-                  aiMessages={aiMessages}
-                  isGenerating={isGenerating}
-                  hoveredMsgId={hoveredMsgId}
-                  copiedId={copiedId}
-                  onHoverMsg={setHoveredMsgId}
-                  onCopy={handleCopy}
-                  onEdit={setInputText}
-                  onFormSubmit={handleFormSubmit}
-                  nodes={nodes}
-                  currentAutomation={currentAutomationRef.current}
-                  isTesting={isTesting}
-                  hasTested={hasTested}
-                  isDeploying={isDeploying}
-                  hasDeployed={hasDeployed}
-                  onTest={handleTest}
-                  onDeploy={handleDeploy}
-                  messagesEndRef={messagesEndRef}
-                />
+        {/* ── Main grid ── */}
+        <div className={`cc-main${isPanelOpen && isCanvasVisible ? " has-panel" : ""}`}>
+          {/* ── Chat pane ── */}
+          <div className="cc-chat-pane">
+            <div
+              ref={scrollContainerRef}
+              className="cc-chat__scroll"
+              role="log"
+              aria-label="Conversation workspace"
+            >
+              <div className="cc-chat__msgs">
+                {!hasMessages ? (
+                  <EmptyState
+                    onSuggestionClick={handleSuggestionClick}
+                    onShowTemplates={() => setShowTemplates(true)}
+                  />
+                ) : (
+                  <MessageList
+                    messages={displayMessages}
+                    aiMessages={aiMessages}
+                    isGenerating={isGenerating}
+                    hoveredMsgId={hoveredMsgId}
+                    copiedId={copiedId}
+                    onHoverMsg={setHoveredMsgId}
+                    onCopy={handleCopy}
+                    onEdit={handleEditMessage}
+                    messagesEndRef={messagesEndRef}
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Scroll to bottom button */}
+            <AnimatePresence>
+              {showScrollBtn && hasMessages && (
+                <motion.button
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  transition={{ duration: 0.15 }}
+                  onClick={scrollToBottom}
+                  className="cc-hbtn"
+                  style={{ position: "absolute", bottom: 100, right: 20, zIndex: 40, borderRadius: "50%", width: 36, height: 36, display: "grid", placeItems: "center" }}
+                  aria-label="Scroll to bottom"
+                  type="button"
+                >
+                  <ChevronsDown className="h-4 w-4" />
+                </motion.button>
               )}
+            </AnimatePresence>
+
+            {/* ── Bottom input area ── */}
+            <div className="cc-chat__bottom">
+              {/* Agent status bar */}
+              {isGenerating && (
+                <div className="cc-status-bar">
+                  <div className="cc-status-bar__dot" />
+                  <span className="cc-status-bar__text">Agent is running…</span>
+                </div>
+              )}
+
+              <Composer
+                value={inputText}
+                onChange={setInputText}
+                onSubmit={handleSubmit}
+                onStop={stopGeneration}
+                isGenerating={isGenerating}
+                disabled={isInputDisabled}
+                isPanelOpen={isPanelOpen}
+                isCanvasVisible={isCanvasVisible}
+                attachedFiles={attachedFiles}
+                onRemoveFile={removeFile}
+                onFileAttach={handleFileAttach}
+                onFileDrop={handleFileDrop}
+                fileInputRef={fileInputRef}
+                textareaRef={textareaRef}
+                placeholder={composerPlaceholder}
+                fileErrors={fileErrors}
+                onDismissError={dismissFileError}
+                onSlashCommand={handleSlashCommand}
+              />
             </div>
           </div>
-        </div>
 
-        {/* Task 6.1: Scroll-to-bottom FAB */}
-        <AnimatePresence>
-          {showScrollBtn && hasMessages && (
-            <motion.button
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
-              transition={{ duration: 0.15 }}
-              onClick={scrollToBottom}
-              className="absolute bottom-[120px] right-6 z-20 flex h-8 w-8 items-center justify-center rounded-full bg-[#161820] border border-white/[0.08] text-white/40 hover:text-white/70 hover:bg-[#1e2028] shadow-[0_4px_12px_rgba(0,0,0,0.4)] transition-all"
-              aria-label="Scroll to bottom"
-            >
-              <ChevronsDown className="h-4 w-4" />
-            </motion.button>
+          {/* ── Resize handle ── */}
+          {isPanelOpen && isCanvasVisible && (
+            <div className="cc-resize-handle" />
           )}
-        </AnimatePresence>
 
-        {/* ─── Floating Input Bar ─── */}
-        <div className="absolute bottom-0 left-0 right-0 z-10 flex justify-center bg-gradient-to-t from-[#08090b] via-[#08090b]/94 to-transparent px-5 pb-5 pt-14 pointer-events-none">
-          <Composer
-            value={inputText}
-            onChange={setInputText}
-            onSubmit={handleSubmit}
-            onStop={stopGeneration}
-            isGenerating={isGenerating}
-            disabled={isInputDisabled}
-            isPanelOpen={isPanelOpen}
-            isCanvasVisible={isCanvasVisible}
-            attachedFiles={attachedFiles}
-            onRemoveFile={removeFile}
-            onFileAttach={handleFileAttach}
-            fileInputRef={fileInputRef}
-            textareaRef={textareaRef}
-            placeholder={composerPlaceholder}
-          />
+          {/* ── Side panel ── */}
+          {isPanelOpen && isCanvasVisible && (
+            <aside className="cc-panel">
+              <InteractiveCanvas
+                nodes={nodes}
+                onTest={handleTest}
+                onDeploy={handleDeploy}
+                isDeploying={isDeploying}
+                hasDeployed={hasDeployed}
+                isTesting={isTesting}
+                hasTested={hasTested}
+                isOpen={true}
+                onClose={() => setIsPanelOpen(false)}
+              />
+            </aside>
+          )}
         </div>
       </div>
-
-      {/* ─── Side Panel (Push-Left) ─── */}
-      <InteractiveCanvas
-        nodes={nodes}
-        onTest={handleTest}
-        onDeploy={handleDeploy}
-        isDeploying={isDeploying}
-        hasDeployed={hasDeployed}
-        isTesting={isTesting}
-        hasTested={hasTested}
-        isOpen={isPanelOpen && isCanvasVisible}
-        onClose={() => setIsPanelOpen(false)}
-      />
-
     </div>
   );
 }

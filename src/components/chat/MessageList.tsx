@@ -1,65 +1,88 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
-import Image from "next/image";
-import { Check, Copy, Pencil, BrainCircuit } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion";
+import { AlertTriangle, Check, CheckCircle2, Copy, Pencil, Zap } from "lucide-react";
+import type { UIMessage } from "ai";
 import type { Message } from "@/store/chat-store";
-import type { FlowNode } from "./InteractiveCanvas";
 import { AiMessage } from "./AiMessage";
-import { FormCard } from "./FormCard";
-import { ProgressCard } from "./ProgressCard";
-import { ReadyCard } from "./ReadyCard";
-import { EngineAnalysisCard } from "./EngineAnalysisCard";
-import { IntegrationCard, IntegrationCardSubmitted } from "./IntegrationCard";
-import { ThinkingIndicator } from "./ThinkingIndicator";
-import type { UIMessage } from "@ai-sdk/react";
 
-function formatRelativeTime(timestamp: number): string {
-  const seconds = Math.floor((Date.now() - timestamp) / 1000);
-  if (seconds < 5) return "just now";
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ago`;
+/**
+ * Legacy in-chat cards (FormCard, IntegrationCard, EngineAnalysisCard,
+ * ReadyCard, ProgressCard, ThinkingIndicator) were deleted during the
+ * workspace-native refactor. Phase 1 keeps the props surface backward-
+ * compatible and removes all dead render branches that referenced those
+ * components. Phase 2 will drop the `messages` (Zustand) loop entirely
+ * once useChat becomes the canonical source.
+ */
+
+type UIMessagePart = UIMessage["parts"][number];
+type TextPart = Extract<UIMessagePart, { type: "text" }>;
+
+interface MessageListProps {
+  messages: Message[];
+  aiMessages: UIMessage[];
+  isGenerating: boolean;
+  hoveredMsgId: string | null;
+  copiedId: string | null;
+  onHoverMsg: (id: string | null) => void;
+  onCopy: (id: string, text: string) => void;
+  onEdit: (text: string) => void;
+  messagesEndRef: React.RefObject<HTMLDivElement | null>;
 }
 
-function formatTime(timestamp: number): string {
+const thinkingPhases = [
+  "Analyzing your request...",
+  "Understanding intent...",
+  "Building workflow...",
+  "Generating response...",
+];
+
+function isTextPart(part: UIMessagePart): part is TextPart {
+  return part.type === "text";
+}
+
+function getUiMessageText(message: UIMessage) {
+  return message.parts.filter(isTextPart).map((part) => part.text).join("");
+}
+
+function hasLegacyToolInvocations(message: UIMessage) {
+  const legacyMessage = message as UIMessage & { toolInvocations?: unknown };
+  return Array.isArray(legacyMessage.toolInvocations) && legacyMessage.toolInvocations.length > 0;
+}
+
+function getUiMessageTimestamp(message: UIMessage) {
+  const value = (message as UIMessage & { createdAt?: Date | string | number }).createdAt;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "number") return value;
+  if (typeof value === "string") return new Date(value).getTime();
+  return undefined;
+}
+
+function formatTime(timestamp?: number): string {
+  if (!timestamp) return "";
   return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-/* ── AI Avatar ── */
+/* ── AI Avatar (Claude bolt mark) ── */
 function AiAvatar({ isActive = false }: { isActive?: boolean }) {
   return (
-    <div className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-accent/20 to-accent/5 ring-1 ring-accent/10 shadow-[0_0_12px_rgba(59,130,246,0.08)]">
-      <Image
-        src="/logo-new.png"
-        alt="AI"
-        width={18}
-        height={18}
-        className="object-contain"
-        style={{ width: "auto", height: "auto" }}
-      />
-      {isActive && (
-        <motion.div
-          className="absolute -inset-0.5 rounded-lg border border-accent/25"
-          animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0, 0.4] }}
-          transition={{ duration: 2, repeat: Infinity }}
-        />
-      )}
+    <div className={`cc-ai-mark${isActive ? " is-breath" : ""}`}>
+      <Zap className="h-3.5 w-3.5" />
     </div>
   );
 }
 
-/* ── Typewriter for legacy Zustand messages ── */
+/* ── Streaming text with word-by-word reveal ── */
 function StreamContent({ content, timestamp }: { content: string; timestamp?: number }) {
   const [displayed, setDisplayed] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
 
   useEffect(() => {
     const isNew = Date.now() - (timestamp || 0) < 2000;
-    const prefersReduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const prefersReduced =
+      typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
     if (!isNew || prefersReduced) {
       setDisplayed(content);
       setIsStreaming(false);
@@ -68,6 +91,7 @@ function StreamContent({ content, timestamp }: { content: string; timestamp?: nu
 
     setIsStreaming(true);
     let index = 0;
+    let timeoutId: ReturnType<typeof setTimeout>;
 
     const tick = () => {
       index += 2;
@@ -77,120 +101,82 @@ function StreamContent({ content, timestamp }: { content: string; timestamp?: nu
         setIsStreaming(false);
         return;
       }
+
       const char = content[index - 1] || "";
-      let delay: number;
-      if (char === "." || char === "!" || char === "?") delay = 60;
-      else if (char === "," || char === ";" || char === ":") delay = 40;
-      else if (char === "\n") delay = 70;
-      else delay = Math.max(10, 16 - Math.floor(index / 80));
-      setTimeout(tick, delay);
+      const delay = char === "." || char === "!" || char === "?" ? 60 : char === "," || char === ";" || char === ":" ? 40 : char === "\n" ? 70 : Math.max(10, 16 - Math.floor(index / 80));
+      timeoutId = setTimeout(tick, delay);
     };
 
-    const t = setTimeout(tick, 14);
-    return () => clearTimeout(t);
+    timeoutId = setTimeout(tick, 14);
+    return () => clearTimeout(timeoutId);
   }, [content, timestamp]);
 
   return (
     <div className="whitespace-pre-wrap">
       {displayed}
-      {isStreaming && (
-        <span
-          className="inline-block ml-0.5 align-middle rounded-[1px]"
-          style={{
-            width: "2px",
-            height: "16px",
-            background: "linear-gradient(180deg, #3b82f6, #60a5fa)",
-            boxShadow: "0 0 8px rgba(59,130,246,0.4)",
-            animation: "cursor-blink 0.8s ease-in-out infinite",
-          }}
-        />
-      )}
+      {isStreaming && <span className="cc-caret" />}
     </div>
   );
 }
 
-/* ── Turn Separator (Task 3.3) ── */
-function TurnSeparator({ timestamp }: { timestamp?: number }) {
-  return (
-    <div className="flex items-center gap-3 my-4 select-none">
-      <div className="h-px flex-1 bg-gradient-to-r from-transparent to-white/[0.04]" />
-      {timestamp && (
-        <span className="text-[10px] font-mono text-white/12 shrink-0">
-          {formatTime(timestamp)}
-        </span>
-      )}
-      <div className="h-px flex-1 bg-gradient-to-l from-transparent to-white/[0.04]" />
-    </div>
-  );
-}
-
-/* ── Thinking Card (Task 4.1) ── */
+/* ── Thinking indicator (Claude-style dots + shimmer) ── */
 function ThinkingCard() {
   const [phaseIndex, setPhaseIndex] = useState(0);
-  const phases = [
-    "Analyzing your request...",
-    "Understanding intent...",
-    "Building workflow...",
-    "Generating response...",
-  ];
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
+    if (reducedMotion) return;
     const interval = setInterval(() => {
-      setPhaseIndex((prev) => (prev + 1) % phases.length);
+      setPhaseIndex((prev) => (prev + 1) % thinkingPhases.length);
     }, 2200);
     return () => clearInterval(interval);
-  }, [phases.length]);
+  }, [reducedMotion]);
 
   return (
-    <div className="mb-2 flex gap-3">
-      <div className="pt-1.5 shrink-0">
-        <AiAvatar isActive />
-      </div>
-      <div className="flex-1 min-w-0">
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-xl bg-accent/[0.03] border border-accent/10 px-4 py-3 overflow-hidden relative"
-        >
-          {/* Shimmer sweep */}
-          <motion.div
-            className="absolute inset-0 bg-gradient-to-r from-transparent via-accent/[0.04] to-transparent"
-            animate={{ x: ["-100%", "100%"] }}
-            transition={{ duration: 2.5, repeat: Infinity, ease: "linear" }}
-          />
-          <div className="relative flex items-center gap-3">
-            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-accent/[0.08] ring-1 ring-accent/[0.1]">
-              <BrainCircuit className="h-3 w-3 text-accent/60" />
-            </div>
-            <AnimatePresence mode="wait">
-              <motion.span
-                key={phaseIndex}
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                transition={{ duration: 0.2 }}
-                className="text-[13px] font-medium text-white/60"
-              >
-                {phases[phaseIndex]}
-              </motion.span>
-            </AnimatePresence>
+    <div className="cc-msg cc-msg--ai cc-msg--thinking">
+      <AiAvatar isActive />
+      <div className="cc-msg__body">
+        <div className="flex items-center gap-3" style={{ fontSize: 14 }}>
+          <div className="cc-dots">
+            <span /><span /><span />
           </div>
-          {/* Indeterminate bar */}
-          <div className="relative h-[2px] mt-3 rounded-full bg-white/[0.04] overflow-hidden">
-            <motion.div
-              className="absolute inset-y-0 left-0 w-1/3 rounded-full"
-              style={{ background: "linear-gradient(90deg, #3b82f6, #60a5fa)" }}
-              animate={{ x: ["-100%", "200%"] }}
-              transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
-            />
-          </div>
-        </motion.div>
+          <AnimatePresence mode="wait">
+            <motion.span
+              key={phaseIndex}
+              initial={reducedMotion ? false : { opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+              transition={{ duration: 0.2 }}
+              className="cc-thinking-text"
+            >
+              {thinkingPhases[phaseIndex]}
+            </motion.span>
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );
 }
 
-/* ── Hover Action Bar (Task 3.4) ── */
+/* ── System notice ── */
+function SystemNotice({ label }: { label: string }) {
+  const isError = /error|failed|rate limit|credits/i.test(label);
+
+  return (
+    <div className={`cc-system-notice${isError ? " cc-system-notice--error" : " cc-system-notice--success"}`} role="status">
+      <div style={{
+        width: 22, height: 22, borderRadius: 6, display: "grid", placeItems: "center", flexShrink: 0,
+        background: isError ? "rgba(251,191,36,0.12)" : "rgba(74,222,128,0.12)",
+        color: isError ? "#fbbf24" : "#4ade80",
+      }}>
+        {isError ? <AlertTriangle className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+      </div>
+      <p style={{ fontSize: 13, color: isError ? "#fbbf24" : "#4ade80", fontWeight: 500 }}>{label}</p>
+    </div>
+  );
+}
+
+/* ── User message action buttons ── */
 function MessageActions({
   msgId,
   content,
@@ -210,27 +196,28 @@ function MessageActions({
     <AnimatePresence>
       {isVisible && (
         <motion.div
-          initial={{ opacity: 0, scale: 0.9, y: 2 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.9, y: 2 }}
-          transition={{ duration: 0.15 }}
-          className="flex items-center gap-0.5 rounded-lg bg-[#161820] border border-white/[0.08] px-1 py-0.5 shadow-[0_2px_8px_rgba(0,0,0,0.4)]"
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9 }}
+          transition={{ duration: 0.12 }}
+          className="flex items-center gap-0.5"
+          style={{ borderRadius: 6, border: "1px solid var(--cc-border)", background: "var(--cc-bg-raised)", padding: "2px 4px" }}
         >
           <button
             onClick={() => onCopy(msgId, content)}
-            className="flex items-center justify-center h-6 w-6 rounded-md text-white/40 hover:text-white/70 hover:bg-white/[0.06] transition-all"
+            className="cc-msg__copy"
+            style={{ opacity: 1 }}
             title="Copy"
+            type="button"
           >
-            {copiedId === msgId ? (
-              <Check className="h-3 w-3 text-emerald-400" />
-            ) : (
-              <Copy className="h-3 w-3" />
-            )}
+            {copiedId === msgId ? <Check className="h-3 w-3" style={{ color: "#4ade80" }} /> : <Copy className="h-3 w-3" />}
           </button>
           <button
             onClick={() => onEdit(content)}
-            className="flex items-center justify-center h-6 w-6 rounded-md text-white/40 hover:text-white/70 hover:bg-white/[0.06] transition-all"
+            className="cc-msg__copy"
+            style={{ opacity: 1 }}
             title="Edit"
+            type="button"
           >
             <Pencil className="h-3 w-3" />
           </button>
@@ -238,27 +225,6 @@ function MessageActions({
       )}
     </AnimatePresence>
   );
-}
-
-interface MessageListProps {
-  messages: Message[];
-  aiMessages: UIMessage[];
-  isGenerating: boolean;
-  hoveredMsgId: string | null;
-  copiedId: string | null;
-  onHoverMsg: (id: string | null) => void;
-  onCopy: (id: string, text: string) => void;
-  onEdit: (text: string) => void;
-  onFormSubmit: (id: string, values: any) => void;
-  nodes: FlowNode[];
-  currentAutomation: any;
-  isTesting: boolean;
-  hasTested: boolean;
-  isDeploying: boolean;
-  hasDeployed: boolean;
-  onTest: () => void;
-  onDeploy: () => void;
-  messagesEndRef: React.RefObject<HTMLDivElement | null>;
 }
 
 export function MessageList({
@@ -270,80 +236,61 @@ export function MessageList({
   onHoverMsg,
   onCopy,
   onEdit,
-  onFormSubmit,
-  nodes,
-  currentAutomation,
-  isTesting,
-  hasTested,
-  isDeploying,
-  hasDeployed,
-  onTest,
-  onDeploy,
   messagesEndRef,
 }: MessageListProps) {
-  /* Task 3.3: determine gap between messages based on conversation turns */
-  const getMessageGap = (currentMsg: Message, index: number): string => {
-    const nextMsg = messages[index + 1];
-    if (!nextMsg) return "mb-2";
-    // Same speaker in sequence: tight gap
-    if (currentMsg.role === nextMsg.role) return "mb-2";
-    // User → AI: tight (same turn)
-    if (currentMsg.role === "user" && nextMsg.role === "ai") return "mb-2";
-    // AI → User (new turn): separator gap
-    if (currentMsg.role === "ai" && nextMsg.role === "user") return "mb-0";
-    return "mb-4";
-  };
-
-  const shouldShowSeparator = (currentMsg: Message, index: number): boolean => {
-    const prevMsg = messages[index - 1];
-    if (!prevMsg) return false;
-    // Show separator before user message that follows an AI message (new turn)
-    if (currentMsg.role === "user" && prevMsg.role === "ai") return true;
-    return false;
-  };
+  const lastAiMessage = aiMessages[aiMessages.length - 1];
 
   return (
     <LayoutGroup>
       <AnimatePresence initial={false}>
-        {messages.map((msg, index) => (
+        {messages.map((msg) => (
           <React.Fragment key={msg.id}>
-            {/* Turn separator */}
-            {shouldShowSeparator(msg, index) && (
-              <TurnSeparator timestamp={msg.timestamp} />
-            )}
-
             <motion.div
               layout
-              initial={{ opacity: 0, y: 12, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-              className={`${getMessageGap(msg, index)} ${
-                msg.role === "user" ? "flex justify-end" : msg.role === "system" ? "flex justify-center" : ""
-              }`}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
             >
-              {/* ── USER MESSAGE (Task 3.1: flat bg, no gradient, no top highlight) ── */}
+              {/* ── User messages (legacy Zustand path; Phase 2 removes) ── */}
               {msg.role === "user" && (
                 <div
-                  className="relative max-w-[70%] group/user"
+                  className="cc-msg cc-msg--user"
                   onMouseEnter={() => onHoverMsg(msg.id)}
                   onMouseLeave={() => onHoverMsg(null)}
                 >
-                  <div className="rounded-2xl rounded-tr-sm bg-[#1e2028] border border-white/[0.08] px-5 py-3.5 text-[14px] leading-relaxed text-white/90 whitespace-pre-wrap shadow-[0_2px_8px_rgba(0,0,0,0.2)]">
-                    {msg.content}
+                  <div className="flex flex-col items-end gap-1">
+                    <div className="cc-msg__body">
+                      {msg.content}
+                    </div>
+                    <div className="flex items-center gap-1.5 mr-1">
+                      <MessageActions
+                        msgId={msg.id}
+                        content={msg.content}
+                        isVisible={hoveredMsgId === msg.id}
+                        copiedId={copiedId}
+                        onCopy={onCopy}
+                        onEdit={onEdit}
+                      />
+                      {msg.timestamp && (
+                        <span style={{ fontFamily: "var(--cc-mono)", fontSize: 10, color: "var(--cc-text-3)" }}>
+                          {formatTime(msg.timestamp)}
+                        </span>
+                      )}
+                    </div>
                   </div>
+                </div>
+              )}
 
-                  {/* Hover actions (Task 3.4: pill container) */}
-                  <div className="flex items-center justify-end gap-1.5 mt-1 mr-1">
-                    <MessageActions
-                      msgId={msg.id}
-                      content={msg.content}
-                      isVisible={hoveredMsgId === msg.id}
-                      copiedId={copiedId}
-                      onCopy={onCopy}
-                      onEdit={onEdit}
-                    />
+              {/* ── AI text messages (legacy Zustand path; Phase 2 removes) ── */}
+              {msg.role === "ai" && msg.content && (
+                <div className="cc-msg cc-msg--ai">
+                  <AiAvatar />
+                  <div className="cc-msg__body">
+                    <div className="cc-msg__text">
+                      <StreamContent content={msg.content} timestamp={msg.timestamp} />
+                    </div>
                     {msg.timestamp && (
-                      <span className="text-[10px] font-mono text-white/12 select-none">
+                      <span style={{ display: "block", paddingLeft: 1, marginTop: 6, fontFamily: "var(--cc-mono)", fontSize: 10, color: "var(--cc-text-3)" }}>
                         {formatTime(msg.timestamp)}
                       </span>
                     )}
@@ -351,174 +298,41 @@ export function MessageList({
                 </div>
               )}
 
-              {/* ── AI MESSAGE (Zustand legacy) ── */}
-              {msg.role === "ai" && (
-                <div className="w-full flex gap-3">
-                  <div className="pt-1.5 shrink-0">
-                    <AiAvatar />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    {/* Unified Integration Card (Analysis + Form) */}
-                    {msg.engineCards && msg.form && !msg.isFormSubmitted && (
-                      <IntegrationCard
-                        trigger={msg.engineCards.trigger}
-                        action={msg.engineCards.action}
-                        fields={msg.form.fields}
-                        onSubmit={(values) => onFormSubmit(msg.id, values)}
-                        timestamp={msg.timestamp}
-                      />
-                    )}
-
-                    {/* Submitted state */}
-                    {msg.engineCards && msg.form && msg.isFormSubmitted && (
-                      <IntegrationCardSubmitted
-                        trigger={msg.engineCards.trigger}
-                        action={msg.engineCards.action}
-                        values={msg.formValues}
-                        fields={msg.form.fields}
-                      />
-                    )}
-
-                    {/* Analysis-only */}
-                    {msg.engineCards && !msg.form && (
-                      <EngineAnalysisCard
-                        trigger={msg.engineCards.trigger}
-                        action={msg.engineCards.action}
-                        setupFields={msg.engineCards.setupFields}
-                        timestamp={msg.timestamp}
-                      />
-                    )}
-
-                    {/* Standalone form */}
-                    {!msg.engineCards && msg.form && !msg.isFormSubmitted && (
-                      <div className="mt-3">
-                        <FormCard
-                          title={msg.form.title}
-                          description={msg.form.description}
-                          fields={msg.form.fields}
-                          onSubmit={(values) => onFormSubmit(msg.id, values)}
-                        />
-                      </div>
-                    )}
-
-                    {/* AI text content */}
-                    {msg.content && (
-                      <div className="relative rounded-2xl rounded-tl-sm bg-white/[0.025] border border-white/[0.06] border-l-2 border-l-accent/20 px-5 py-4 shadow-[0_1px_4px_rgba(0,0,0,0.15)]">
-                        <div className="text-[14px] leading-[1.75] text-white/80">
-                          <StreamContent content={msg.content} timestamp={msg.timestamp} />
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Timestamp below AI container */}
-                    {msg.timestamp && (
-                      <span className="pl-1 block text-[10px] font-mono text-white/12 mt-1.5 select-none">
-                        {formatTime(msg.timestamp)}
-                      </span>
-                    )}
-
-                    {/* Ready Card */}
-                    {msg.isReadyCard && (
-                      <div className="mt-3">
-                        <ReadyCard
-                          title="Automation ready"
-                          description="Workflow built — review, test, and deploy below"
-                          trigger={
-                            currentAutomation?.trigger ??
-                            nodes.find((node) => node.type === "trigger")?.label
-                          }
-                          action={
-                            currentAutomation?.action ??
-                            nodes.find((node) => node.type === "action")?.label
-                          }
-                          explanation={`When ${
-                            currentAutomation?.trigger ?? "a trigger fires"
-                          }, the system will automatically ${(
-                            currentAutomation?.action ?? "execute the configured action"
-                          ).toLowerCase()}.`}
-                          isTesting={isTesting}
-                          hasTested={hasTested}
-                          isDeploying={isDeploying}
-                          hasDeployed={hasDeployed}
-                          onTest={onTest}
-                          onDeploy={onDeploy}
-                          onModify={() => {
-                            const input = document.querySelector("textarea");
-                            if (input) input.focus();
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                </div>
+              {/* ── Thinking + system notices collapse to SystemNotice ── */}
+              {(msg.role === "thinking" || msg.role === "system") && msg.content && (
+                <SystemNotice label={msg.content} />
               )}
-
-              {/* ── THINKING STATE (Zustand legacy) ── */}
-              {msg.role === "thinking" && (
-                <motion.div
-                  className="w-full flex gap-3"
-                  exit={{ opacity: 0, scale: 0.96 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <div className="pt-1 shrink-0">
-                    <AiAvatar isActive />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <ProgressCard steps={msg.content.split("\n")} />
-                  </div>
-                </motion.div>
-              )}
-
-              {/* ── SYSTEM MESSAGES ── */}
-              {msg.role === "system" &&
-                (msg.content.toLowerCase().includes("building your automation") ||
-                msg.content.toLowerCase().includes("applying configuration") ? (
-                  <div className="w-full">
-                    <ThinkingIndicator label={msg.content} variant="card" />
-                  </div>
-                ) : (
-                  <ThinkingIndicator label={msg.content} variant="pill" />
-                ))}
             </motion.div>
           </React.Fragment>
         ))}
       </AnimatePresence>
 
-      {/* ── REAL AI STREAMING MESSAGES (from useAutomationChat) ── */}
+      {/* ── AI SDK streaming messages (canonical source) ── */}
       {aiMessages
-        .filter((m) => m.role === "assistant" || m.role === "user")
-        .map((m) => {
-          if (m.role === "user") {
-            const textContent = Array.isArray((m as any).parts)
-              ? (m as any).parts
-                  .filter((p: any) => p.type === "text")
-                  .map((p: any) => p.text)
-                  .join("")
-              : (m as any).content ?? "";
-
+        .filter((message) => message.role === "assistant" || message.role === "user")
+        .map((message) => {
+          if (message.role === "user") {
+            const textContent = getUiMessageText(message);
             if (textContent === "__system_test_passed__") return null;
 
             return (
               <motion.div
                 layout
-                key={m.id}
-                initial={{ opacity: 0, y: 12, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                className="mb-2 flex justify-end"
+                key={message.id}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
               >
                 <div
-                  className="relative max-w-[70%] group/user"
-                  onMouseEnter={() => onHoverMsg(m.id)}
+                  className="cc-msg cc-msg--user"
+                  onMouseEnter={() => onHoverMsg(message.id)}
                   onMouseLeave={() => onHoverMsg(null)}
                 >
-                  <div className="rounded-2xl rounded-tr-sm bg-[#1e2028] border border-white/[0.06] px-5 py-3.5 text-[14px] leading-relaxed text-white/85 whitespace-pre-wrap shadow-[0_2px_8px_rgba(0,0,0,0.15)]">
-                    {textContent}
-                  </div>
-                  <div className="flex items-center justify-end gap-1.5 mt-1 mr-1">
+                  <div className="flex flex-col items-end gap-1">
+                    <div className="cc-msg__body">{textContent}</div>
                     <MessageActions
-                      msgId={m.id}
+                      msgId={message.id}
                       content={textContent}
-                      isVisible={hoveredMsgId === m.id}
+                      isVisible={hoveredMsgId === message.id}
                       copiedId={copiedId}
                       onCopy={onCopy}
                       onEdit={onEdit}
@@ -529,34 +343,28 @@ export function MessageList({
             );
           }
 
-          if (m.role === "assistant") {
-            const textContent = Array.isArray((m as any).parts)
-              ? (m as any).parts
-                  .filter((p: any) => p.type === "text")
-                  .map((p: any) => p.text)
-                  .join("")
-              : (m as any).content ?? "";
-            
-            if (!textContent && !(m as any).toolInvocations?.length) return null;
+          const textContent = getUiMessageText(message);
+          if (!textContent && !hasLegacyToolInvocations(message)) return null;
 
-            return (
-              <motion.div layout key={m.id} initial={{ opacity: 0, y: 12, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }}>
-                <AiMessage
-                  content={textContent}
-                  isStreaming={isGenerating && m.id === aiMessages[aiMessages.length - 1]?.id}
-                  timestamp={(m as any).createdAt?.getTime?.()}
-                />
-              </motion.div>
-            );
-          }
-
-          return null;
+          return (
+            <motion.div
+              layout
+              key={message.id}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              data-assistant-state={isGenerating && message.id === lastAiMessage?.id ? "streaming" : "resolved"}
+            >
+              <AiMessage
+                content={textContent}
+                isStreaming={isGenerating && message.id === lastAiMessage?.id}
+                timestamp={getUiMessageTimestamp(message)}
+              />
+            </motion.div>
+          );
         })}
 
-      {/* ── Thinking card (Task 4.1: structured progress, not dots) ── */}
-      {isGenerating && aiMessages[aiMessages.length - 1]?.role !== "assistant" && (
-        <ThinkingCard />
-      )}
+      {/* ── Thinking card when waiting for first token ── */}
+      {isGenerating && lastAiMessage?.role !== "assistant" && <ThinkingCard />}
 
       <div ref={messagesEndRef} className="h-4" />
     </LayoutGroup>

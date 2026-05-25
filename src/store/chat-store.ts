@@ -1,31 +1,19 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { FlowNode } from '../components/chat/InteractiveCanvas';
-import type { FieldValue, FieldDef } from '../components/chat/FormCard';
 
-export type FormDef = {
-  title: string;
-  description: string;
-  fields: FieldDef[];
-};
-
-export type EngineCards = {
-  trigger: string;
-  action: string;
-  setupFields: string[];
-};
-
+/**
+ * Legacy in-chat artifact types (FormCard, ReadyCard, EngineCards) were removed
+ * during the workspace-native refactor. The Message type now carries only the
+ * fields needed for Zustand-persisted history. Streaming/optimistic message
+ * lifecycle is owned by AI SDK `useChat` (canonical message source).
+ */
 export type Message = {
   id: string;
   role: "user" | "ai" | "system" | "thinking";
   content: string;
   state?: WorkspaceState;
-  form?: FormDef;
-  isReadyCard?: boolean;
-  isFormSubmitted?: boolean;
-  formValues?: Record<string, FieldValue>;
   timestamp?: number;
-  engineCards?: EngineCards;
 };
 
 export type ChatSequenceStep = "boot" | "wait_message" | "ready" | "deployed";
