@@ -2,17 +2,17 @@
 
 import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
+import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
-import { Copy, Check } from "lucide-react";
-import Image from "next/image";
-import { motion } from "framer-motion";
+import { Copy, Check, Zap } from "lucide-react";
 
 /* ── Code Block with Copy ── */
 function CodeBlock({ children, className }: { children?: React.ReactNode; className?: string }) {
   const [copied, setCopied] = useState(false);
   const language = className?.replace("language-", "") ?? "text";
   const code = String(children).replace(/\n$/, "");
+  const lines = code.split("\n");
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(code);
@@ -21,20 +21,20 @@ function CodeBlock({ children, className }: { children?: React.ReactNode; classN
   };
 
   return (
-    <div className="relative group my-3 rounded-xl overflow-hidden border border-white/[0.07] bg-[#0a0b0d]">
-      {/* Header bar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-white/[0.05] bg-white/[0.015]">
-        <span className="text-[10px] font-mono font-semibold uppercase tracking-widest text-white/25">
+    <div className="relative group my-3 rounded-xl overflow-hidden" style={{ border: "1px solid var(--cc-border)", background: "#0c0c0c" }}>
+      <div className="flex items-center justify-between px-4 py-2" style={{ borderBottom: "1px solid var(--cc-border-subtle)", background: "rgba(255,255,255,0.015)" }}>
+        <span style={{ fontFamily: "var(--cc-mono)", fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--cc-text-3)" }}>
           {language}
         </span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-medium text-white/25 hover:text-white/60 hover:bg-white/[0.05] transition-all"
+          className="flex items-center gap-1.5 rounded-md px-2 py-1 transition-all"
+          style={{ fontSize: 10, fontWeight: 500, color: "var(--cc-text-3)" }}
         >
           {copied ? (
             <>
-              <Check className="h-3 w-3 text-emerald-400" />
-              <span className="text-emerald-400">Copied</span>
+              <Check className="h-3 w-3" style={{ color: "#4ade80" }} />
+              <span style={{ color: "#4ade80" }}>Copied</span>
             </>
           ) : (
             <>
@@ -44,49 +44,45 @@ function CodeBlock({ children, className }: { children?: React.ReactNode; classN
           )}
         </button>
       </div>
-      <pre className="p-4 overflow-x-auto custom-scrollbar text-[12.5px] leading-relaxed">
-        <code className={className}>{children}</code>
-      </pre>
+      <div className="overflow-x-auto">
+        <table style={{ borderCollapse: "collapse", width: "100%" }}>
+          <tbody>
+            {lines.map((line, i) => (
+              <tr key={i}>
+                <td
+                  style={{
+                    padding: "0 12px 0 16px",
+                    textAlign: "right",
+                    userSelect: "none",
+                    fontFamily: "var(--cc-mono)",
+                    fontSize: 11,
+                    lineHeight: 1.65,
+                    color: "var(--cc-text-3)",
+                    opacity: 0.5,
+                    verticalAlign: "top",
+                    whiteSpace: "nowrap",
+                    borderRight: "1px solid var(--cc-border-subtle)",
+                  }}
+                >
+                  {i + 1}
+                </td>
+                <td
+                  style={{
+                    padding: "0 16px 0 14px",
+                    fontFamily: "var(--cc-mono)",
+                    fontSize: 12.5,
+                    lineHeight: 1.65,
+                    whiteSpace: "pre",
+                  }}
+                >
+                  <code className={className} dangerouslySetInnerHTML={{ __html: line || "\u200b" }} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
-  );
-}
-
-/* ── AI Avatar ── */
-function AiAvatarSmall({ isActive = false }: { isActive?: boolean }) {
-  return (
-    <div className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-accent/20 to-accent/5 ring-1 ring-accent/10 shadow-[0_0_12px_rgba(59,130,246,0.08)]">
-      <Image
-        src="/logo-new.png"
-        alt="AI"
-        width={18}
-        height={18}
-        className="object-contain"
-        style={{ width: "auto", height: "auto" }}
-      />
-      {isActive && (
-        <motion.div
-          className="absolute -inset-0.5 rounded-lg border border-accent/25"
-          animate={{ scale: [1, 1.15, 1], opacity: [0.4, 0, 0.4] }}
-          transition={{ duration: 2, repeat: Infinity }}
-        />
-      )}
-    </div>
-  );
-}
-
-/* ── Streaming Cursor ── */
-function StreamingCursor() {
-  return (
-    <span
-      className="inline-block ml-0.5 align-middle rounded-[1px]"
-      style={{
-        width: "2px",
-        height: "16px",
-        background: "linear-gradient(180deg, #3b82f6 0%, #60a5fa 100%)",
-        boxShadow: "0 0 8px rgba(59,130,246,0.4), 0 0 2px rgba(59,130,246,0.8)",
-        animation: "cursor-blink 0.8s ease-in-out infinite",
-      }}
-    />
   );
 }
 
@@ -94,120 +90,153 @@ interface AiMessageProps {
   content: string;
   isStreaming?: boolean;
   timestamp?: number;
+  thinkingLabel?: string;
 }
 
-export function AiMessage({ content, isStreaming = false, timestamp }: AiMessageProps) {
-  if (!content) return null;
+const markdownComponents: Components = {
+  code({ className, children }) {
+    const isInline = !className;
+    if (isInline) {
+      return (
+        <code
+          className="rounded-md px-1.5 py-0.5"
+          style={{ fontFamily: "var(--cc-mono)", fontSize: 13, background: "rgba(255,255,255,0.06)", border: "1px solid var(--cc-border)", color: "var(--cc-accent)" }}
+        >
+          {children}
+        </code>
+      );
+    }
+    return <CodeBlock className={className}>{children}</CodeBlock>;
+  },
+  p({ children }) {
+    return <p style={{ marginBottom: 8, lineHeight: 1.55, color: "var(--cc-text-0)" }}>{children}</p>;
+  },
+  h1({ children }) {
+    return <h1 style={{ marginBottom: 8, marginTop: 16, fontSize: 17, fontWeight: 700, color: "#fff" }}>{children}</h1>;
+  },
+  h2({ children }) {
+    return <h2 style={{ marginBottom: 6, marginTop: 16, fontSize: 15, fontWeight: 600, color: "var(--cc-text-0)" }}>{children}</h2>;
+  },
+  h3({ children }) {
+    return <h3 style={{ marginBottom: 6, marginTop: 12, fontSize: 14, fontWeight: 600, color: "var(--cc-text-0)" }}>{children}</h3>;
+  },
+  ul({ children }) {
+    return <ul style={{ marginBottom: 8, paddingLeft: 4 }}>{children}</ul>;
+  },
+  ol({ children }) {
+    return <ol className="list-inside list-decimal" style={{ marginBottom: 8, paddingLeft: 4 }}>{children}</ol>;
+  },
+  li({ children }) {
+    return (
+      <li style={{ fontSize: 14, color: "var(--cc-text-1)", marginBottom: 4, paddingLeft: 4, listStylePosition: "outside", marginLeft: 16 }}>
+        {children}
+      </li>
+    );
+  },
+  blockquote({ children }) {
+    return (
+      <blockquote
+        className="my-4 rounded-r-md"
+        style={{ borderLeft: "3px solid var(--cc-accent-border)", background: "var(--cc-accent-dim)", padding: "4px 0 4px 16px", fontSize: 14, color: "var(--cc-text-2)", fontStyle: "italic" }}
+      >
+        {children}
+      </blockquote>
+    );
+  },
+  strong({ children }) {
+    return <strong style={{ fontWeight: 600, color: "#fff" }}>{children}</strong>;
+  },
+  table({ children }) {
+    return (
+      <div className="my-3 overflow-x-auto rounded-xl" style={{ border: "1px solid var(--cc-border)" }}>
+        <table className="w-full" style={{ fontSize: 12.5 }}>{children}</table>
+      </div>
+    );
+  },
+  thead({ children }) {
+    return <thead style={{ borderBottom: "1px solid var(--cc-border)", background: "var(--cc-bg-raised)" }}>{children}</thead>;
+  },
+  th({ children }) {
+    return (
+      <th style={{ padding: "10px 16px", textAlign: "left", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--cc-text-2)" }}>
+        {children}
+      </th>
+    );
+  },
+  td({ children }) {
+    return <td style={{ padding: "10px 16px", borderTop: "1px solid var(--cc-border-subtle)", color: "var(--cc-text-1)" }}>{children}</td>;
+  },
+  hr() {
+    return <hr style={{ border: "none", borderTop: "1px solid var(--cc-border)", margin: "16px 0" }} />;
+  },
+  a({ href, children }) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ color: "var(--cc-accent)", textDecoration: "underline", textUnderlineOffset: 2 }}
+      >
+        {children}
+      </a>
+    );
+  },
+};
+
+function StreamingPlaceholder({ label }: { label: string }) {
+  return (
+    <div className="cc-thinking-shell" aria-live="polite">
+      <div className="cc-activity-row">
+        <div className="cc-dots" aria-hidden="true">
+          <span /><span /><span />
+        </div>
+        <span className="cc-thinking-text">{label}</span>
+      </div>
+      <div className="cc-thinking-lines" aria-hidden="true">
+        <span className="cc-skeleton-line cc-skeleton-line--wide" />
+        <span className="cc-skeleton-line cc-skeleton-line--mid" />
+        <span className="cc-skeleton-line cc-skeleton-line--short" />
+      </div>
+    </div>
+  );
+}
+
+export function AiMessage({
+  content,
+  isStreaming = false,
+  timestamp,
+  thinkingLabel = "Streaming response...",
+}: AiMessageProps) {
+  if (!content && !isStreaming) return null;
 
   return (
-    <div className="w-full flex gap-3 mb-2 group/ai">
-      {/* Avatar — outside the container */}
-      <div className="pt-1.5 shrink-0">
-        <AiAvatarSmall isActive={isStreaming} />
+    <div className={`cc-msg cc-msg--ai${isStreaming && !content ? " cc-msg--streaming-empty" : ""}`}>
+      {/* Bolt avatar */}
+      <div className={`cc-ai-mark${isStreaming ? " is-breath" : ""}`}>
+        <Zap className="h-3.5 w-3.5" />
       </div>
 
-      {/* Message container — Task 3.2: visual container for AI messages */}
-      <div className="flex-1 min-w-0">
-        <div className="relative rounded-2xl rounded-tl-sm bg-white/[0.025] border border-white/[0.06] border-l-2 border-l-accent/20 px-5 py-4 shadow-[0_1px_4px_rgba(0,0,0,0.15)]">
-          <div className="text-[14px] leading-[1.75] text-white/80">
+      {/* Message body — flat flow, no bubble borders */}
+      <div className="cc-msg__body">
+        {content ? (
+          <div className="cc-msg__text">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeHighlight]}
-              components={{
-                code({ node, className, children, ...props }: any) {
-                  const isInline = !className;
-                  if (isInline) {
-                    return (
-                      <code
-                        className="px-1.5 py-0.5 rounded-md bg-white/[0.06] border border-white/[0.06] font-mono text-[12.5px] text-accent/90"
-                        {...props}
-                      >
-                        {children}
-                      </code>
-                    );
-                  }
-                  return <CodeBlock className={className}>{children}</CodeBlock>;
-                },
-                p({ children }: any) {
-                  return <p className="mb-3 last:mb-0 text-white/80 leading-[1.75]">{children}</p>;
-                },
-                h1({ children }: any) {
-                  return <h1 className="text-[17px] font-bold text-white/90 mb-3 mt-4 first:mt-0">{children}</h1>;
-                },
-                h2({ children }: any) {
-                  return <h2 className="text-[15px] font-semibold text-white/85 mb-2 mt-4 first:mt-0">{children}</h2>;
-                },
-                h3({ children }: any) {
-                  return <h3 className="text-[14px] font-semibold text-white/80 mb-2 mt-3 first:mt-0">{children}</h3>;
-                },
-                ul({ children }: any) {
-                  return <ul className="space-y-1.5 mb-3 pl-1">{children}</ul>;
-                },
-                ol({ children }: any) {
-                  return <ol className="space-y-1.5 mb-3 pl-1 list-decimal list-inside">{children}</ol>;
-                },
-                li({ children }: any) {
-                  return (
-                    <li className="flex items-start gap-2 text-white/70 text-[13.5px]">
-                      <span className="mt-2 h-1.5 w-1.5 rounded-full bg-accent/40 shrink-0" />
-                      <span className="flex-1">{children}</span>
-                    </li>
-                  );
-                },
-                blockquote({ children }: any) {
-                  return (
-                    <blockquote className="border-l-2 border-accent/30 pl-4 my-3 text-white/50 italic text-[13.5px]">
-                      {children}
-                    </blockquote>
-                  );
-                },
-                strong({ children }: any) {
-                  return <strong className="font-semibold text-white/90">{children}</strong>;
-                },
-                table({ children }: any) {
-                  return (
-                    <div className="overflow-x-auto my-3 rounded-xl border border-white/[0.06]">
-                      <table className="w-full text-[12.5px]">{children}</table>
-                    </div>
-                  );
-                },
-                thead({ children }: any) {
-                  return <thead className="bg-white/[0.03] border-b border-white/[0.06]">{children}</thead>;
-                },
-                th({ children }: any) {
-                  return <th className="px-4 py-2.5 text-left font-semibold text-white/50 uppercase tracking-wider text-[10px]">{children}</th>;
-                },
-                td({ children }: any) {
-                  return <td className="px-4 py-2.5 text-white/60 border-t border-white/[0.04]">{children}</td>;
-                },
-                hr() {
-                  return <hr className="my-4 border-white/[0.06]" />;
-                },
-                a({ href, children }: any) {
-                  return (
-                    <a
-                      href={href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-accent/80 underline underline-offset-2 hover:text-accent transition-colors"
-                    >
-                      {children}
-                    </a>
-                  );
-                },
-              }}
+              components={markdownComponents}
             >
               {content}
             </ReactMarkdown>
 
-            {/* Streaming cursor — Task 3.5: thin glowing bar */}
-            {isStreaming && <StreamingCursor />}
+            {isStreaming && <span className="cc-caret" />}
           </div>
-        </div>
+        ) : (
+          <StreamingPlaceholder label={thinkingLabel} />
+        )}
 
         {/* Timestamp — only when not streaming */}
         {timestamp && !isStreaming && (
-          <span className="pl-1 block text-[10px] font-mono text-white/15 mt-1.5">
+          <span style={{ display: "block", paddingLeft: 1, marginTop: 6, fontFamily: "var(--cc-mono)", fontSize: 10, color: "var(--cc-text-3)" }}>
             {new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>
         )}

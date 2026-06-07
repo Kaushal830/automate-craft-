@@ -72,16 +72,16 @@ export default function DashboardShell({
   const [showProfileModal, setShowProfileModal] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
-  const [displayName, setDisplayName] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem(DISPLAY_NAME_KEY) || user.name || "User";
-    }
-    return user.name || "User";
-  });
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(() => {
-    if (typeof window !== "undefined") return localStorage.getItem(AVATAR_URL_KEY);
-    return null;
-  });
+  const [displayName, setDisplayName] = useState(user.name || "User");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  // Sync from localStorage after mount to avoid hydration mismatch
+  useEffect(() => {
+    const storedName = localStorage.getItem(DISPLAY_NAME_KEY);
+    if (storedName) setDisplayName(storedName);
+    const storedAvatar = localStorage.getItem(AVATAR_URL_KEY);
+    if (storedAvatar) setAvatarUrl(storedAvatar);
+  }, []);
 
   useEffect(() => {
     const fetchRecents = async () => {
@@ -159,7 +159,7 @@ export default function DashboardShell({
   const workspaceItems = [
     { name: "Connect Apps", href: "/dashboard/apps", icon: Cable },
     { name: "Execution Logs", href: "/dashboard/logs", icon: ScrollText },
-    { name: "Credits & Usage", href: "/dashboard/credits", icon: Zap },
+    { name: "Usage Intelligence", href: "/dashboard/credits", icon: Zap },
     { name: "Settings", href: "/dashboard/settings", icon: Settings2 },
   ];
 

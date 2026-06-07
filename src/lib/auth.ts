@@ -340,7 +340,7 @@ export async function requireUser({ requireOnboarding = true }: { requireOnboard
     redirect("/login");
   }
 
-  if (!user.emailVerified) {
+  if (!user.emailVerified && !isOpenAccessMode()) {
     log.info("User email is not verified. Redirecting to /verify-email.");
     redirect(`/verify-email?email=${encodeURIComponent(user.email)}`);
   }

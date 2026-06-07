@@ -17,6 +17,7 @@ export function getGuestUser(): AuthenticatedUser {
     name: GUEST_USER_NAME,
     mode: "local",
     onboarded: true,
+    emailVerified: true,
   };
 }
 

@@ -1,23 +1,46 @@
 import type { Metadata } from "next";
-import { Outfit, Fira_Code } from "next/font/google";
+import { DM_Mono, DM_Sans, Figtree, Inter, JetBrains_Mono } from "next/font/google";
+import "@xyflow/react/dist/style.css";
 import "./globals.css";
 import Footer from "@/components/Footer";
 import AppChrome from "@/components/AppChrome";
 import { SupabaseProvider } from "@/components/providers/SupabaseProvider";
 import { CreditsProvider } from "@/components/providers/CreditsProvider";
 import { RuntimeDebugProbe } from "@/components/RuntimeDebugProbe";
+import { SplashScreen } from "@/components/SplashScreen";
 
-const outfit = Outfit({
-  variable: "--font-outfit",
+const figtree = Figtree({
+  variable: "--font-figtree",
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "800"],
+  weight: ["400", "500", "600", "700"],
   display: "swap",
 });
 
-const firaCode = Fira_Code({
-  variable: "--font-fira-code",
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+const dmSans = DM_Sans({
+  variable: "--font-chat-sans",
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  display: "swap",
+});
+
+const dmMono = DM_Mono({
+  variable: "--font-chat-mono",
+  subsets: ["latin"],
+  weight: ["400", "500"],
   display: "swap",
 });
 
@@ -57,7 +80,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${outfit.variable} ${firaCode.variable} h-full antialiased`}
+      className={`${figtree.variable} ${inter.variable} ${jetbrainsMono.variable} ${dmSans.variable} ${dmMono.variable} h-full antialiased`}
     >
       <body className="min-h-full font-sans">
         <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[999999] focus:rounded-lg focus:bg-accent focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:shadow-lg">
@@ -66,6 +89,7 @@ export default function RootLayout({
         <SupabaseProvider>
           <CreditsProvider>
             {showRuntimeDebugProbe ? <RuntimeDebugProbe /> : null}
+            <SplashScreen />
             <AppChrome navbar={null} footer={<Footer />}>
               {children}
             </AppChrome>

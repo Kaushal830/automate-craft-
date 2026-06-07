@@ -13,7 +13,10 @@ let openaiClient: OpenAI | null = null;
 
 function getOpenAIClient() {
   if (!openaiClient) {
-    openaiClient = new OpenAI({ apiKey: env.openaiApiKey });
+    openaiClient = new OpenAI({
+      apiKey: env.openaiApiKey,
+      ...(env.openaiBaseUrl ? { baseURL: env.openaiBaseUrl } : {}),
+    });
   }
   return openaiClient;
 }

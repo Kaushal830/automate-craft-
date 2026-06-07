@@ -10,7 +10,6 @@ import {
   PanelRight,
   Pencil,
   Star,
-  Zap,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import dynamic from "next/dynamic";
@@ -22,7 +21,9 @@ import { CommandPalette } from "./CommandPalette";
 import { useAutomationChat } from "@/hooks/useAutomationChat";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
+import { AgentActivityPanel } from "./AgentActivityPanel";
 import { getFileCategory, processFiles, validateFile } from "@/lib/file-utils";
+import type { UIMessage } from "ai";
 
 const InteractiveCanvas = dynamic(
   () => import("./InteractiveCanvas").then((mod) => mod.InteractiveCanvas),
@@ -35,6 +36,45 @@ const helpTips = [
   "Use Cmd/Ctrl + K for test, deploy, and preview actions.",
   "Test the automation before deploying it.",
 ];
+
+const buildStatusLabels = [
+  "Analyzing workflow intent...",
+  "Planning automation structure...",
+  "Mapping execution steps...",
+  "Connecting workflow nodes...",
+  "Validating trigger conditions...",
+  "Preparing deployment logic...",
+  "Optimizing execution flow...",
+  "Generating automation pipeline...",
+  "Verifying integrations...",
+  "Streaming response...",
+];
+
+const requirementStatusLabels = [
+  "Analyzing missing requirements...",
+  "Checking integration details...",
+  "Identifying unresolved fields...",
+  "Preparing clarification questions...",
+];
+
+function useExecutionStatus(enabled: boolean, labels = buildStatusLabels) {
+  const [labelIndex, setLabelIndex] = useState(0);
+
+  useEffect(() => {
+    if (!enabled) {
+      setLabelIndex(0);
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setLabelIndex((current) => (current + 1) % labels.length);
+    }, 1900);
+
+    return () => window.clearInterval(interval);
+  }, [enabled, labels]);
+
+  return labels[labelIndex % labels.length];
+}
 
 /* ── Templates (connected to suggestion system) ── */
 interface ChatContainerProps {
@@ -68,6 +108,94 @@ function generateTitle(prompt: string): string {
 
 function sanitizeCustomTitle(value: string) {
   return value.replace(/[^\w\s-]/g, "").replace(/\s+/g, " ").trim().slice(0, 40);
+}
+
+function shouldCollectInputsForPrompt(prompt: string) {
+  const normalized = prompt.toLowerCase();
+  if (!normalized.trim()) return false;
+
+  const mentionsAutomation =
+    /\b(automate|automation|workflow|when|whenever|if|trigger|send|notify|lead|form|submission|webhook|sheet|email|whatsapp|slack|crm|hubspot|salesforce)\b/.test(
+      normalized,
+    );
+  if (!mentionsAutomation) return false;
+
+  const mentionsForm = /\b(form|google form|typeform|submission|lead form)\b/.test(normalized);
+  const mentionsSheet = /\b(sheet|spreadsheet|google sheets|row)\b/.test(normalized);
+  const mentionsWebhook = /\b(webhook|api|endpoint)\b/.test(normalized);
+  const mentionsWhatsapp = /\b(whatsapp|wa message)\b/.test(normalized);
+  const mentionsSlack = /\b(slack|channel)\b/.test(normalized);
+  const mentionsEmail = /\b(email|gmail|inbox)\b/.test(normalized);
+
+  const hasSpecificSource =
+    /\b(form id|form name|which form|typeform|google form named|lead form named|website lead form|contact form|signup form|sheet id|sheet name|spreadsheet id|spreadsheet name|webhook url|endpoint url|api endpoint|hubspot|salesforce|razorpay|stripe)\b/.test(
+      normalized,
+    );
+  const hasExactWhatsappDestination =
+    /\b(\+?\d[\d\s().-]{6,}|wa\.me|phone number|recipient number|whatsapp group|group id|group named|group called|sales alerts|support alerts|ops alerts|alerts group|team whatsapp)\b/.test(
+      normalized,
+    ) || /\b[a-z0-9][a-z0-9 -]{1,32}\s+group\b/.test(normalized);
+  const hasExactSlackDestination =
+    /#[a-z0-9_-]+|\b(slack channel|channel id|channel named|workspace named|workspace id)\b/.test(
+      normalized,
+    );
+  const hasExactEmailDestination =
+    /[^\s@]+@[^\s@]+\.[^\s@]+|\b(email address|inbox alias|shared inbox|support inbox|sales inbox|them|user|lead|customer|subscriber)\b/.test(
+      normalized,
+    );
+  const hasPayloadFields =
+    /\b(field|fields|include|name|email|phone|company|payload|details|lead details|all fields)\b/.test(
+      normalized,
+    );
+
+  return (
+    ((mentionsForm || mentionsSheet || mentionsWebhook) && !hasSpecificSource) ||
+    (mentionsWhatsapp && !hasExactWhatsappDestination) ||
+    (mentionsSlack && !hasExactSlackDestination) ||
+    (mentionsEmail && !hasExactEmailDestination) ||
+    ((mentionsWhatsapp || mentionsSlack || mentionsEmail) && !hasPayloadFields)
+  );
+}
+
+function hasMeaningfulWorkflow(nodes: FlowNode[]) {
+  const defaultLabels = new Set(["Form Submission", "AI Analysis", "Send Notification"]);
+  return nodes.some((node) => node.label && !defaultLabels.has(node.label));
+}
+
+function createRestoredWorkflowMessages({
+  chatId,
+  prompt,
+  title,
+  nodes,
+}: {
+  chatId: string;
+  prompt?: string;
+  title: string;
+  nodes: FlowNode[];
+}): UIMessage[] {
+  if (!hasMeaningfulWorkflow(nodes)) return [];
+
+  const labels = nodes.map((node) => node.label).filter(Boolean);
+  const workflowSummary = labels.length > 0 ? labels.join(" -> ") : "the saved workflow";
+  const restoredPrompt = prompt?.trim() || `Continue the ${title || "automation"} workflow.`;
+
+  return [
+    {
+      id: `${chatId}-restored-user`,
+      role: "user",
+      parts: [{ type: "text", text: restoredPrompt }],
+    },
+    {
+      id: `${chatId}-restored-assistant`,
+      role: "assistant",
+      parts: [
+        {
+          type: "text",
+          text: `${title || "Automation workflow"} is restored. Current workflow: ${workflowSummary}.`,
+        },
+      ],
+    },
+  ];
 }
 
 /**
@@ -106,6 +234,7 @@ export function ChatContainer({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isClient, setIsClient] = useState(false);
+  const [storeHydrated, setStoreHydrated] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [inputText, setInputText] = useState("");
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
@@ -115,7 +244,10 @@ export function ChatContainer({
   const [showScrollBtn, setShowScrollBtn] = useState(false);
 
   // ── Persisted workspace state (chat-store, per chatId) ─────────
-  const { sessions, updateSession, setNodes: setStoreNodes } = useChatStore();
+  const {
+    sessions, updateSession, setNodes: setStoreNodes,
+    pushPromptHistory, setFeedback,
+  } = useChatStore();
   const session = sessions[chatId];
 
   const defaultNodes: FlowNode[] = [
@@ -141,6 +273,8 @@ export function ChatContainer({
   const hasDeployed = isClient ? session?.hasDeployed ?? false : false;
   // Ultra-thinking: URL param overrides stored value on first mount; persisted thereafter.
   const ultraThinking = isClient ? session?.ultraThinking ?? ultraThinkingProp : ultraThinkingProp;
+  const promptHistory = isClient ? session?.promptHistory ?? [] : [];
+  const feedbackLog = isClient ? session?.feedbackLog ?? [] : [];
   // autoSubmittedAt deliberately NOT read here — the effect uses
   // useChatStore.getState() inside the body to bypass render staleness.
 
@@ -284,19 +418,48 @@ export function ChatContainer({
    *     session, the entire workspace looks identical to pre-refresh.
    */
   const restoredRef = useRef(false);
+  const restorePendingRef = useRef(false);
   useEffect(() => {
-    if (!isClient || restoredRef.current) return;
+    if (!isClient || !storeHydrated || restoredRef.current || restorePendingRef.current) return;
     if (aiMessages.length > 0) {
       // useChat already has messages (fresh conversation in progress).
       restoredRef.current = true;
       return;
     }
-    const stored = useChatStore.getState().sessions[chatId]?.persistedMessages ?? [];
+
+    const liveSession = useChatStore.getState().sessions[chatId];
+    const stored = liveSession?.persistedMessages ?? [];
     if (stored.length > 0) {
+      restorePendingRef.current = true;
       setChatMessages(stored);
+      return;
     }
+
+    const fallbackMessages = createRestoredWorkflowMessages({
+      chatId,
+      prompt: initialPrompt || liveSession?.promptHistory?.[0],
+      title: liveSession?.chatTitle || chatTitle,
+      nodes: liveSession?.nodes || nodes,
+    });
+
+    if (
+      fallbackMessages.length > 0 &&
+      (liveSession?.workspaceState === "canvas_visible" || liveSession?.panelOpen)
+    ) {
+      restorePendingRef.current = true;
+      setChatMessages(fallbackMessages);
+      updateSession(chatId, { persistedMessages: fallbackMessages });
+      return;
+    }
+
     restoredRef.current = true;
-  }, [isClient, aiMessages.length, chatId, setChatMessages]);
+  }, [isClient, storeHydrated, aiMessages.length, chatId, initialPrompt, chatTitle, nodes, setChatMessages, updateSession]);
+
+  useEffect(() => {
+    if (!restorePendingRef.current || aiMessages.length === 0) return;
+    restorePendingRef.current = false;
+    restoredRef.current = true;
+  }, [aiMessages.length]);
 
   /**
    * MIRROR: write conversation messages back to the store on every change
@@ -310,6 +473,7 @@ export function ChatContainer({
   useEffect(() => {
     if (!isClient || !restoredRef.current) return;
     const stored = useChatStore.getState().sessions[chatId]?.persistedMessages ?? [];
+    if (aiMessages.length === 0 && stored.length > 0) return;
     const trimmed =
       aiMessages.length > MESSAGES_PERSIST_LIMIT
         ? aiMessages.slice(-MESSAGES_PERSIST_LIMIT)
@@ -322,6 +486,11 @@ export function ChatContainer({
   }, [aiMessages, aiStatus, chatId, isClient, updateSession]);
 
   const isGenerating = aiStatus === "streaming" || aiStatus === "submitted";
+  const isCollectingInputs = workspaceState === "collecting_inputs";
+  const executionStatusLabel = useExecutionStatus(
+    isGenerating,
+    isCollectingInputs ? requirementStatusLabels : buildStatusLabels,
+  );
   const hasAssistantResponse = aiMessages.some((message) => message.role === "assistant");
 
   // Once an assistant response arrives, drop stale error notices older than 30s
@@ -330,7 +499,8 @@ export function ChatContainer({
     ? notices.filter((n) => n.kind !== "error" || Date.now() - n.timestamp < 30000)
     : notices;
 
-  const isCanvasVisible = workspaceState === "canvas_visible";
+  const isCanvasVisible =
+    workspaceState === "canvas_visible" || (isGenerating && isPanelOpen && hasAssistantResponse);
   const hasMessages = visibleNotices.length > 0 || aiMessages.length > 0;
   const isInputDisabled = isGenerating;
 
@@ -346,11 +516,31 @@ export function ChatContainer({
     if (hasTested) return "ready";
     if (isTesting) return "testing";
     if (isDeploying) return "deploying";
+    if (isCollectingInputs) return "clarifying";
     if (workspaceState === "ready_to_build" || isGenerating) return "building";
     return "idle";
   })();
 
   useEffect(() => setIsClient(true), []);
+
+  useEffect(() => {
+    if (!isClient) return;
+
+    const persistApi = useChatStore.persist;
+    if (!persistApi) {
+      setStoreHydrated(true);
+      return;
+    }
+
+    if (persistApi.hasHydrated()) {
+      setStoreHydrated(true);
+      return;
+    }
+
+    return persistApi.onFinishHydration(() => {
+      setStoreHydrated(true);
+    });
+  }, [isClient]);
 
   useEffect(() => {
     if (!isEditingTitle) setDraftTitle(chatTitle);
@@ -390,7 +580,7 @@ export function ChatContainer({
    * window where two near-simultaneous effects both see null.
    */
   useEffect(() => {
-    if (!isClient || !initialPrompt) return;
+    if (!isClient || !storeHydrated || !initialPrompt) return;
     if (hasAutoSubmitted.current) return;
     // Live read — not the React-render-captured value.
     const liveSession = useChatStore.getState().sessions[chatId];
@@ -401,9 +591,12 @@ export function ChatContainer({
     updateSession(chatId, {
       autoSubmittedAt: Date.now(),
       ultraThinking: ultraThinkingProp,
+      workspaceState: shouldCollectInputsForPrompt(initialPrompt)
+        ? "collecting_inputs"
+        : "ready_to_build",
     });
     submitPrompt(initialPrompt);
-  }, [isClient, initialPrompt, chatId, updateSession, submitPrompt, ultraThinkingProp]);
+  }, [isClient, storeHydrated, initialPrompt, chatId, updateSession, submitPrompt, ultraThinkingProp]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -524,7 +717,12 @@ export function ChatContainer({
       const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
       const near = distFromBottom < STICK_THRESHOLD_PX;
       stickToBottomRef.current = near;
-      setShowScrollBtn(distFromBottom > 200);
+      // Hysteresis: show at 200px, hide at 100px to avoid flickering
+      setShowScrollBtn((prev) => {
+        if (!prev && distFromBottom > 200) return true;
+        if (prev && distFromBottom < 100) return false;
+        return prev;
+      });
     };
 
     el.addEventListener("scroll", handleScroll, { passive: true });
@@ -611,9 +809,16 @@ export function ChatContainer({
     setInputText("");
     setAttachedFiles([]);
     setFileErrors([]);
-    setWorkspaceState("ready_to_build");
+    setWorkspaceState(
+      !hasAssistantResponse && shouldCollectInputsForPrompt(input)
+        ? "collecting_inputs"
+        : "ready_to_build",
+    );
     // User just sent — re-stick to bottom regardless of previous scroll position.
     stickToBottomRef.current = true;
+
+    // Save to prompt history
+    if (input) pushPromptHistory(chatId, input);
 
     if (filesToProcess.length > 0) {
       try {
@@ -632,6 +837,48 @@ export function ChatContainer({
       await submitPrompt(input);
     }
   };
+
+  const handleRegenerate = useCallback(() => {
+    // Remove last assistant message and resubmit the last user message
+    const msgs = [...aiMessages];
+    const lastAssistantIdx = msgs.map((m) => m.role).lastIndexOf("assistant");
+    if (lastAssistantIdx === -1) return;
+    const lastUserMsg = [...msgs].reverse().find((m) => m.role === "user");
+    if (!lastUserMsg) return;
+
+    const userText = lastUserMsg.parts
+      .filter((p) => p.type === "text")
+      .map((p) => (p as { type: "text"; text: string }).text)
+      .join("");
+    if (!userText.trim()) return;
+
+    // Trim messages to before last assistant
+    const trimmed = msgs.slice(0, lastAssistantIdx);
+    setChatMessages(trimmed);
+    stickToBottomRef.current = true;
+    submitPrompt(userText);
+  }, [aiMessages, setChatMessages, submitPrompt]);
+
+  const handleFeedback = useCallback(
+    (messageId: string, rating: 1 | -1) => {
+      setFeedback(chatId, messageId, rating);
+      // Fire-and-forget: silently post to API for server-side storage
+      fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messageId, rating, chatId }),
+      }).catch(() => { /* ignore — local store is the source of truth */ });
+    },
+    [chatId, setFeedback],
+  );
+
+  const handleQuickReply = useCallback(
+    (text: string) => {
+      setInputText(text);
+      requestAnimationFrame(() => textareaRef.current?.focus());
+    },
+    [],
+  );
 
   const handleTest = async () => {
     setIsTesting(true);
@@ -886,41 +1133,45 @@ export function ChatContainer({
         >
           {/* ── Chat pane ── */}
           <div className="cc-chat-pane">
-            <div
-              ref={scrollContainerRef}
-              className="cc-chat__scroll"
-              role="log"
-              aria-label="Conversation workspace"
-            >
-              <div className="cc-chat__msgs">
-                {/* Chat page always renders MessageList. Initial prompt
-                    arrives from /dashboard via the `?prompt=` URL param
-                    and auto-submits on mount. No empty state needed. */}
-                <MessageList
+          {/* Agent activity panel — above messages */}
+          <div className="cc-chat__scroll" ref={scrollContainerRef} role="log" aria-label="Conversation workspace">
+            <div className="cc-chat__msgs">
+              {isGenerating || aiMessages.some((m) => m.role === "assistant") ? (
+                <AgentActivityPanel
                   aiMessages={aiMessages}
-                  notices={visibleNotices}
                   isGenerating={isGenerating}
-                  hoveredMsgId={hoveredMsgId}
-                  copiedId={copiedId}
-                  onHoverMsg={setHoveredMsgId}
-                  onCopy={handleCopy}
-                  onEdit={handleEditMessage}
-                  messagesEndRef={messagesEndRef}
+                  thinkingMode={isCollectingInputs ? "requirements" : "building"}
                 />
-              </div>
+              ) : null}
+              <MessageList
+                aiMessages={aiMessages}
+                notices={visibleNotices}
+                isGenerating={isGenerating}
+                hoveredMsgId={hoveredMsgId}
+                copiedId={copiedId}
+                onHoverMsg={setHoveredMsgId}
+                onCopy={handleCopy}
+                onEdit={handleEditMessage}
+                onRegenerate={handleRegenerate}
+                onFeedback={handleFeedback}
+                onQuickReply={handleQuickReply}
+                messagesEndRef={messagesEndRef}
+                thinkingMode={isCollectingInputs ? "requirements" : "building"}
+                feedbackLog={feedbackLog}
+              />
             </div>
+          </div>
 
             {/* Scroll to bottom button */}
             <AnimatePresence>
               {showScrollBtn && hasMessages && (
                 <motion.button
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  transition={{ duration: 0.15 }}
+                  initial={{ opacity: 0, y: 8, scale: 0.9 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.9 }}
+                  transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
                   onClick={() => scrollToBottom("smooth")}
-                  className="cc-hbtn"
-                  style={{ position: "absolute", bottom: 100, right: 20, zIndex: 40, borderRadius: "50%", width: 36, height: 36, display: "grid", placeItems: "center" }}
+                  className="cc-scroll-fab"
                   aria-label="Scroll to bottom"
                   type="button"
                 >
@@ -933,9 +1184,20 @@ export function ChatContainer({
             <div className="cc-chat__bottom">
               {/* Agent status bar */}
               {isGenerating && (
-                <div className="cc-status-bar">
+                <div className="cc-status-bar" aria-live="polite">
                   <div className="cc-status-bar__dot" />
-                  <span className="cc-status-bar__text">Agent is running…</span>
+                  <AnimatePresence mode="wait" initial={false}>
+                    <motion.span
+                      key={executionStatusLabel}
+                      className="cc-status-bar__text"
+                      initial={{ opacity: 0, y: 3 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -3 }}
+                      transition={{ duration: 0.16 }}
+                    >
+                      {executionStatusLabel}
+                    </motion.span>
+                  </AnimatePresence>
                 </div>
               )}
 
@@ -958,6 +1220,7 @@ export function ChatContainer({
                 fileErrors={fileErrors}
                 onDismissError={dismissFileError}
                 onSlashCommand={handleSlashCommand}
+                promptHistory={promptHistory}
               />
             </div>
           </div>

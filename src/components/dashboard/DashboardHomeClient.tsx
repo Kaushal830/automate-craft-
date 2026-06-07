@@ -20,11 +20,36 @@ while making motion instant or static for people who prefer less movement.
 
 /* ─── rotating placeholder examples ─── */
 const promptExamples = [
-  "Send WhatsApp message on new leads",
-  "Save form data to Google Sheets",
-  "Notify me when payment is received",
-  "Follow up with leads after 24 hours",
-  "Sync CRM contacts to my email list",
+  "Automatically follow up with every new lead within 5 minutes.",
+  "Send my team a WhatsApp alert whenever a high-value lead arrives.",
+  "Qualify inbound leads and push serious prospects into my CRM.",
+  "Notify my sales team instantly when a customer books a demo.",
+  "Generate a weekly finance summary and send it to Slack.",
+  "Sync my Shopify orders to Google Sheets and notify warehouse.",
+  "Create a HubSpot deal when a lead signs a contract.",
+  "Transcribe incoming support calls and log summaries in Zendesk.",
+  "Draft an SEO-optimized blog post and save it to WordPress.",
+  "Monitor competitor pricing changes and alert me via email.",
+  "Categorize incoming emails and auto-reply to common questions.",
+  "Send a personalized welcome email when a user subscribes.",
+  "Generate custom onboarding documents for new enterprise clients.",
+  "Extract invoice details and log them into my accounting software.",
+  "Route urgent support tickets to the on-call engineer's WhatsApp.",
+  "Analyze customer feedback and generate a weekly sentiment report.",
+  "Identify churn-risk users and alert account managers in Slack.",
+  "Pull daily ad spend from Meta and push it to Google Sheets.",
+  "Auto-assign inbound leads based on geography and industry.",
+  "Draft a personalized LinkedIn outreach message for new signups.",
+  "Trigger a re-engagement email sequence for inactive users.",
+  "Send a daily summary of high-priority Jira issues.",
+  "Sync new Stripe subscriptions to my CRM and Slack.",
+  "Create an invoice and email it to the client upon project completion.",
+  "Schedule a follow-up meeting after every product demo.",
+  "Send an SMS reminder 24 hours before an upcoming appointment.",
+  "Alert the dev team if website performance drops below threshold.",
+  "Translate support queries into English before routing them.",
+  "Cross-reference customer data to identify upsell opportunities.",
+  "Generate a personalized sales proposal based on lead data."
 ];
 
 /* ─── 8 quick-start templates ─── */
@@ -156,10 +181,11 @@ export default function DashboardHomeClient({ firstName }: { firstName: string |
 
   /* ── rotate placeholder examples ── */
   useEffect(() => {
-    if (prompt.trim().length > 0) return;
-    const id = setInterval(() => setExampleIndex((i) => (i + 1) % promptExamples.length), 3500);
+    // Pause rotation if the user has typed anything OR if the input is focused
+    if (prompt.trim().length > 0 || isPromptFocused) return;
+    const id = setInterval(() => setExampleIndex((i) => (i + 1) % promptExamples.length), 4000);
     return () => clearInterval(id);
-  }, [prompt]);
+  }, [prompt, isPromptFocused]);
 
   /* ── file attach ── */
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -275,16 +301,16 @@ export default function DashboardHomeClient({ firstName }: { firstName: string |
                 <div className="rounded-[16px] bg-[#0a0a0a] p-1.5 text-left shadow-[0_24px_50px_rgba(0,0,0,0.2),0_10px_20px_rgba(0,0,0,0.1)] transition-[box-shadow,transform] duration-300 ease-out group-hover:shadow-[0_0_80px_rgba(79,142,247,0.12),0_32px_60px_rgba(79,142,247,0.1),0_16px_32px_rgba(28,28,28,0.12)]">
                   <div className={`relative isolate overflow-hidden rounded-[16px] border px-4 py-4 shadow-[0_10px_24px_rgba(0,0,0,0.1)] transition-all duration-300 ease-out sm:px-5 sm:py-4.5 ${
                     hasPrompt
-                      ? "border-accent/50 shadow-[0_0_0_4px_rgba(59,130,246,0.2),0_16px_34px_rgba(59,130,246,0.15)] scale-[1.01]"
+                      ? "border-white/20 shadow-[0_16px_34px_rgba(0,0,0,0.25)] scale-[1.01]"
                       : isPromptFocused
-                      ? "border-accent/40 shadow-[0_0_0_3px_rgba(59,130,246,0.1),0_16px_34px_rgba(0,0,0,0.4)] scale-[1.005]"
+                      ? "border-white/20 shadow-[0_16px_34px_rgba(0,0,0,0.4)] scale-[1.005]"
                       : "border-white/10 group-hover:border-white/20"
                   }`}>
                     <div className="pointer-events-none absolute inset-0 rounded-[16px] bg-[linear-gradient(180deg,#1c1c1c_0%,#0a0a0a_100%)]" />
                     <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-white/15 blur-[1px]" />
                     <motion.div
                       className="pointer-events-none absolute inset-0 rounded-[16px] opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-                      animate={{ background: hasPrompt ? ["radial-gradient(circle at top, rgba(59,130,246,0.2), transparent 55%)"] : ["radial-gradient(circle at top, rgba(59,130,246,0.05), transparent 45%)", "radial-gradient(circle at top, rgba(59,130,246,0.15), transparent 50%)", "radial-gradient(circle at top, rgba(59,130,246,0.05), transparent 45%)"] }}
+                      animate={{ background: hasPrompt ? ["radial-gradient(circle at top, rgba(255,255,255,0.08), transparent 55%)"] : ["radial-gradient(circle at top, rgba(255,255,255,0.03), transparent 45%)", "radial-gradient(circle at top, rgba(255,255,255,0.06), transparent 50%)", "radial-gradient(circle at top, rgba(255,255,255,0.03), transparent 45%)"] }}
                       transition={
                         hasPrompt || reduceMotion
                           ? {}
@@ -295,9 +321,16 @@ export default function DashboardHomeClient({ firstName }: { firstName: string |
                     {/* textarea */}
                     <div className="relative">
                       {!prompt && (
-                        <div className="pointer-events-none absolute inset-0 text-[1rem] leading-[1.55] sm:text-[1.05rem] overflow-hidden">
+                        <div className="pointer-events-none absolute inset-0 h-[1.55em] text-[1rem] leading-[1.55] sm:text-[1.05rem] overflow-hidden">
                           <AnimatePresence mode="popLayout">
-                            <motion.div key={exampleIndex} initial={{ opacity: 0, x: reduceMotion ? 0 : 18 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: reduceMotion ? 0 : -18 }} transition={{ duration: reduceMotion ? 0 : 0.55, ease: [0.22, 1, 0.36, 1] }} className="absolute inset-0 text-white/40">
+                            <motion.div 
+                              key={exampleIndex} 
+                              initial={{ opacity: 0, y: "100%", filter: "blur(2px)" }} 
+                              animate={{ opacity: 1, y: "0%", filter: "blur(0px)" }} 
+                              exit={{ opacity: 0, y: "-100%", filter: "blur(2px)" }} 
+                              transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }} 
+                              className="absolute inset-0 text-white/40"
+                            >
                               {promptExamples[exampleIndex]}
                             </motion.div>
                           </AnimatePresence>
@@ -351,116 +384,41 @@ export default function DashboardHomeClient({ firstName }: { firstName: string |
               </div>
             </motion.div>
 
-            {/* ── Quick Start Template Chips ── */}
+            {/* ── Quick Start Templates — Minimal Pills ── */}
             <motion.div
-              initial={{ opacity: 0, y: reduceMotion ? 0 : 14 }}
+              initial={false}
               animate={{ opacity: 1, y: 0 }}
               transition={{
                 delay: reduceMotion ? 0 : 0.22,
                 duration: reduceMotion ? 0 : 0.5,
                 ease: [0.22, 1, 0.36, 1],
               }}
-              className="mx-auto max-w-[640px]"
+              className="mx-auto mt-5 flex max-w-[700px] flex-wrap items-center justify-center gap-3 px-4"
             >
-              {/* label */}
-              <p className="mb-3 text-center text-[10.5px] font-semibold uppercase tracking-[0.22em] text-white/22">
-                Quick Start
-              </p>
-
-              {/* horizontal scrollable chip strip */}
-              <div className="relative">
-                {/* left fade */}
-                <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 z-10 bg-gradient-to-r from-[#0a0a0a] to-transparent" />
-                {/* right fade */}
-                <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 z-10 bg-gradient-to-l from-[#0a0a0a] to-transparent" />
-
-                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none px-1" style={{ scrollbarWidth: "none" }}>
-                  {templates.map((t, tIdx) => {
-                    const Icon = t.icon;
-                    const isActive = activeTemplate === t.title;
-                    return (
-                      <motion.button
-                        key={t.title}
-                        type="button"
-                        onClick={() => handleTemplateClick(t)}
-                        whileTap={reduceMotion ? undefined : { scale: 0.96 }}
-                        initial={{ opacity: 0, x: reduceMotion ? 0 : 12 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{
-                          duration: reduceMotion ? 0 : 0.35,
-                          delay: reduceMotion ? 0 : 0.3 + tIdx * 0.04,
-                          ease: [0.22, 1, 0.36, 1],
-                        }}
-                        className="group relative flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-2 text-left transition-all duration-200"
-                        style={{
-                          borderColor: isActive ? `${t.color}60` : "rgba(255,255,255,0.08)",
-                          background: isActive ? `${t.color}14` : "rgba(255,255,255,0.03)",
-                          boxShadow: isActive ? `0 0 16px ${t.color}25` : "none",
-                          color: isActive ? t.color : "rgba(255,255,255,0.5)",
-                        }}
-                        onMouseEnter={(e) => {
-                          if (isActive) return;
-                          const btn = e.currentTarget as HTMLButtonElement;
-                          btn.style.borderColor = `${t.color}40`;
-                          btn.style.background = `${t.color}0a`;
-                          btn.style.color = "rgba(255,255,255,0.8)";
-                        }}
-                        onMouseLeave={(e) => {
-                          if (isActive) return;
-                          const btn = e.currentTarget as HTMLButtonElement;
-                          btn.style.borderColor = "rgba(255,255,255,0.08)";
-                          btn.style.background = "rgba(255,255,255,0.03)";
-                          btn.style.color = "rgba(255,255,255,0.5)";
-                        }}
-                      >
-                        {/* icon dot */}
-                        <span
-                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-transform duration-200 group-hover:scale-110"
-                          style={{ background: `${t.color}20`, color: t.color }}
-                        >
-                          <Icon className="h-2.5 w-2.5" />
-                        </span>
-
-                        {/* label */}
-                        <span className="whitespace-nowrap text-[12px] font-medium">
-                          {t.title}
-                        </span>
-
-                        {/* active check */}
-                        {isActive && (
-                          <motion.span
-                            initial={{ scale: reduceMotion ? 1 : 0 }}
-                            animate={{ scale: 1 }}
-                            className="ml-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold"
-                            style={{ background: t.color, color: "#000" }}
-                          >
-                            ✓
-                          </motion.span>
-                        )}
-                      </motion.button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* hint when a template is active */}
-              <AnimatePresence>
-                {activeTemplate && (
-                  <motion.p
-                    initial={{ opacity: 0, y: reduceMotion ? 0 : 6 }}
+              {templates.slice(0, 5).map((t, tIdx) => {
+                // Since this old component uses Lucide icons instead of iconComponent, we get t.icon
+                const IconComp = t.icon;
+                return (
+                  <motion.button
+                    key={t.title}
+                    type="button"
+                    onClick={() => handleTemplateClick(t)}
+                    whileTap={{ scale: reduceMotion ? 1 : 0.97 }}
+                    initial={false}
                     animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: reduceMotion ? 0 : 4 }}
-                    transition={{ duration: reduceMotion ? 0 : 0.25 }}
-                    className="mt-3 text-center text-[11.5px] text-white/35"
+                    transition={{
+                      duration: 0.2,
+                      delay: reduceMotion ? 0 : 0.3 + tIdx * 0.05,
+                    }}
+                    className="group flex items-center gap-2 rounded-[12px] border border-white/5 bg-[#151515] px-3.5 py-2 text-[13px] font-medium text-white/50 transition-all duration-300 hover:-translate-y-1 hover:border-white/10 hover:bg-[#1f1f1f] hover:text-white/90 hover:shadow-lg"
                   >
-                    ✏️ Edit the prompt above or press{" "}
-                    <kbd className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-white/50">
-                      Enter
-                    </kbd>{" "}
-                    to generate
-                  </motion.p>
-                )}
-              </AnimatePresence>
+                    <span className="flex items-center justify-center text-white/30 transition-colors group-hover:text-white/70">
+                      <IconComp size={15} />
+                    </span>
+                    <span>{t.title}</span>
+                  </motion.button>
+                );
+              })}
             </motion.div>
 
           </div>

@@ -1,7 +1,8 @@
 "use client";
 
-import React from "react";
-import { Workflow, FileSpreadsheet, Mail, Zap, LayoutGrid } from "lucide-react";
+import React, { useCallback } from "react";
+import { Workflow, FileSpreadsheet, Mail, Zap, LayoutGrid, Sparkles } from "lucide-react";
+import { motion } from "framer-motion";
 import { useChatStore } from "@/store/chat-store";
 import Link from "next/link";
 
@@ -37,46 +38,88 @@ interface EmptyStateProps {
   onShowTemplates?: () => void;
 }
 
+/* Cursor-follow glow tracker for cards */
+function trackGlow(e: React.MouseEvent<HTMLButtonElement>) {
+  const rect = e.currentTarget.getBoundingClientRect();
+  const x = ((e.clientX - rect.left) / rect.width) * 100;
+  const y = ((e.clientY - rect.top) / rect.height) * 100;
+  e.currentTarget.style.setProperty("--mx", `${x}%`);
+  e.currentTarget.style.setProperty("--my", `${y}%`);
+}
+
 export function EmptyState({ onSuggestionClick, onShowTemplates }: EmptyStateProps) {
   const { sessions } = useChatStore();
 
-  /* Recent sessions — Phase 2 removed message persistence so we can no longer
-   * sort by last-message timestamp. Insertion order from Object.entries is
-   * stable in modern engines; deployed sessions float to the top.
-   * Phase 3 will add `updatedAt` to ChatSession for proper ordering. */
   const recentSessions = Object.entries(sessions)
     .map(([id, session]) => ({ id, ...session }))
     .filter((s) => s.chatTitle)
     .sort((a, b) => {
       const aDeployed = a.step === "deployed" ? 1 : 0;
       const bDeployed = b.step === "deployed" ? 1 : 0;
-      return bDeployed - aDeployed;
+      if (bDeployed !== aDeployed) return bDeployed - aDeployed;
+      return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
     })
     .slice(0, 3);
 
   return (
     <div className="cc-welcome">
-      {/* Icon */}
-      <div className="cc-welcome__icon">
-        <Zap className="h-7 w-7" />
-      </div>
+      {/* Animated hero icon with pulsing ring */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.85, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        className="cc-welcome__icon"
+        style={{ position: "relative" }}
+      >
+        <Sparkles className="h-7 w-7" />
+        {/* Pulsing ring */}
+        <motion.div
+          style={{
+            position: "absolute",
+            inset: -6,
+            borderRadius: 22,
+            border: "1.5px solid rgba(52, 133, 255, 0.3)",
+          }}
+          animate={{
+            scale: [1, 1.15, 1],
+            opacity: [0.5, 0, 0.5],
+          }}
+          transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
+        />
+      </motion.div>
 
       {/* Title */}
-      <h3 className="cc-welcome__title">What would you like to build?</h3>
+      <motion.h3
+        className="cc-welcome__title"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1, duration: 0.4 }}
+      >
+        What would you like to build?
+      </motion.h3>
 
       {/* Subtitle */}
-      <p className="cc-welcome__sub">
+      <motion.p
+        className="cc-welcome__sub"
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.18, duration: 0.4 }}
+      >
         Describe a workflow in plain English, or start from a template below.
-      </p>
+      </motion.p>
 
       {/* Starter cards grid */}
       <div className="cc-welcome__cards">
-        {SUGGESTIONS.map((chip) => (
-          <button
+        {SUGGESTIONS.map((chip, i) => (
+          <motion.button
             key={chip.label}
             onClick={() => onSuggestionClick(chip.prompt)}
+            onMouseMove={trackGlow}
             className="cc-welcome__card"
             type="button"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.22 + i * 0.06, duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
           >
             <div className="cc-welcome__card-head">
               <div className="cc-welcome__card-icon">
@@ -85,26 +128,34 @@ export function EmptyState({ onSuggestionClick, onShowTemplates }: EmptyStatePro
               <span className="cc-welcome__card-title">{chip.label}</span>
             </div>
             <span className="cc-welcome__card-body">{chip.desc}</span>
-          </button>
+          </motion.button>
         ))}
       </div>
 
       {/* Templates button */}
       {onShowTemplates && (
-        <button
+        <motion.button
           onClick={onShowTemplates}
           className="cc-sugg-chip"
           style={{ marginTop: 18 }}
           type="button"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
         >
           <LayoutGrid className="h-3.5 w-3.5" />
           Browse all templates
-        </button>
+        </motion.button>
       )}
 
       {/* Recent sessions */}
       {recentSessions.length > 0 && (
-        <div style={{ width: "100%", marginTop: 28, borderTop: "1px solid var(--cc-border)", paddingTop: 20 }}>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.55 }}
+          style={{ width: "100%", marginTop: 28, borderTop: "1px solid var(--cc-border)", paddingTop: 20 }}
+        >
           <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--cc-text-3)", marginBottom: 8 }}>
             Recent
           </div>
@@ -135,7 +186,7 @@ export function EmptyState({ onSuggestionClick, onShowTemplates }: EmptyStatePro
               );
             })}
           </div>
-        </div>
+        </motion.div>
       )}
     </div>
   );

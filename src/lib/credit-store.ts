@@ -23,6 +23,35 @@ export type CreditTransaction = {
   createdAt: string;
 };
 
+async function ensureLocalCreditUser(userId: string) {
+  if (userId === "guest-user") return;
+
+  await updateLocalDatabase((database) => {
+    const existingUser = database.users.find((user) => user.id === userId);
+    if (existingUser) return;
+
+    database.users.push({
+      id: userId,
+      email: `${userId}@supabase.local`,
+      name: "Supabase User",
+      passwordHash: "supabase-auth-managed",
+      createdAt: new Date().toISOString(),
+      planCredits: 10,
+      extraCredits: 0,
+      onboarded: true,
+    });
+
+    database.usageLogs.unshift({
+      id: crypto.randomUUID(),
+      userId,
+      action: "Welcome bonus - 10 free credits",
+      creditsUsed: 0,
+      status: "Success",
+      createdAt: new Date().toISOString(),
+    });
+  });
+}
+
 // ─── Get User Credits ─────────────────────────────────────────────
 
 export async function getUserCredits(userId: string): Promise<UserCredits> {
@@ -88,6 +117,7 @@ export async function getUserCredits(userId: string): Promise<UserCredits> {
   }
 
   log.debug("Using local database to get user credits.");
+  await ensureLocalCreditUser(userId);
   const database = await readLocalDatabase();
   const user = database.users.find((u) => u.id === userId);
 
@@ -130,6 +160,11 @@ export async function getUserCredits(userId: string): Promise<UserCredits> {
 export async function deductCredits(userId: string, amount: number, actionDesc: string): Promise<boolean> {
   log.info("Deducting credits for user:", userId, "amount:", amount);
 
+  if (userId === "guest-user") {
+    log.info("Skipping credit deduction for guest open-access user.");
+    return true;
+  }
+
   if (isSupabaseMode()) {
     const supabase = createSupabaseAdminClient();
 
@@ -157,6 +192,7 @@ export async function deductCredits(userId: string, amount: number, actionDesc: 
     return true;
   }
 
+  await ensureLocalCreditUser(userId);
   return updateLocalDatabase((database) => {
     const user = database.users.find((u) => u.id === userId);
     if (!user) return false;
@@ -235,6 +271,7 @@ export async function buyCredits(userId: string, amount: number, packageDesc: st
     return true;
   }
 
+  await ensureLocalCreditUser(userId);
   return updateLocalDatabase((database) => {
     const user = database.users.find((u) => u.id === userId);
     if (!user) return false;
@@ -336,6 +373,7 @@ export async function grantSubscriptionCredits(
   }
 
   // Local mode fallback
+  await ensureLocalCreditUser(userId);
   return updateLocalDatabase((database) => {
     const user = database.users.find((u) => u.id === userId);
     const plan = database.plans.find((p) => p.id === planId);

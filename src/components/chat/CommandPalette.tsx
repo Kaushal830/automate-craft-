@@ -35,6 +35,7 @@ export function CommandPalette({
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const paletteRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -151,6 +152,19 @@ export function CommandPalette({
       if (e.key === "Escape") {
         e.preventDefault();
         close();
+      } else if (e.key === "Tab") {
+        // Focus trap: keep Tab cycling within the palette
+        e.preventDefault();
+        const focusable = paletteRef.current?.querySelectorAll<HTMLElement>(
+          'input, button, [tabindex]:not([tabindex="-1"])'
+        );
+        if (!focusable || focusable.length === 0) return;
+        const items = Array.from(focusable);
+        const currentIdx = items.indexOf(document.activeElement as HTMLElement);
+        const nextIdx = e.shiftKey
+          ? (currentIdx - 1 + items.length) % items.length
+          : (currentIdx + 1) % items.length;
+        items[nextIdx]?.focus();
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
         setSelectedIndex((i) => (i + 1) % filtered.length);
@@ -194,6 +208,10 @@ export function CommandPalette({
             exit={{ opacity: 0, scale: 0.95, y: -20 }}
             transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
             className="fixed left-1/2 top-[20%] z-[9999] w-full max-w-lg -translate-x-1/2 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#111214]/95 shadow-[0_24px_80px_rgba(0,0,0,0.7)] backdrop-blur-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Command palette"
+            ref={paletteRef}
           >
             {/* Search input */}
             <div className="flex items-center gap-3 border-b border-white/[0.06] px-5 py-4">

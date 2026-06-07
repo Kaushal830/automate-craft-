@@ -36,7 +36,10 @@ const log = createLogger("ai/providers/openai");
 let client: OpenAI | null = null;
 function getClient(): OpenAI {
   if (!client) {
-    client = new OpenAI({ apiKey: env.openaiApiKey });
+    client = new OpenAI({
+      apiKey: env.openaiApiKey,
+      ...(env.openaiBaseUrl ? { baseURL: env.openaiBaseUrl } : {}),
+    });
   }
   return client;
 }

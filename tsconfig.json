@@ -32,6 +32,9 @@
   ],
   "exclude": [
     "node_modules",
-    "water-pump-report"
+    "water-pump-report",
+    "aurora-drive-os",
+    "claude-chat-design",
+    "codex-screenshots"
   ]
 }

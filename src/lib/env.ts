@@ -1,6 +1,17 @@
+const openaiBaseUrl = process.env.OPENAI_BASE_URL;
+const defaultOpenAIModel = openaiBaseUrl?.includes("openrouter.ai")
+  ? "openai/gpt-oss-120b:free"
+  : "gpt-4o";
+
 export const env = {
   openaiApiKey: process.env.OPENAI_API_KEY,
-  openaiModel: process.env.OPENAI_MODEL || "gpt-4o",
+  openaiBaseUrl,
+  openaiModel: process.env.OPENAI_MODEL || defaultOpenAIModel,
+  openrouterSiteUrl:
+    process.env.OPENROUTER_SITE_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    "http://localhost:3000",
+  openrouterAppName: process.env.OPENROUTER_APP_NAME || "AutomateCraft",
   /**
    * Active workflow generation provider. One of: "openai" | "claude" | "gemini".
    * Defaults to "openai". Provider implementations live under src/lib/ai/providers.

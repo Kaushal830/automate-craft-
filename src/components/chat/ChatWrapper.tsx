@@ -12,7 +12,9 @@ interface ChatWrapperProps {
 export function ChatWrapper({ chatId, initialPrompt, ultraThinking }: ChatWrapperProps) {
   return (
     <ChatErrorBoundary>
-      <ChatContainer chatId={chatId} initialPrompt={initialPrompt} ultraThinking={ultraThinking} />
+      <div className="flex h-full min-w-0 flex-1">
+        <ChatContainer chatId={chatId} initialPrompt={initialPrompt} ultraThinking={ultraThinking} />
+      </div>
     </ChatErrorBoundary>
   );
 }

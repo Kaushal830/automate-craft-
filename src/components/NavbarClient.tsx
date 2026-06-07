@@ -57,7 +57,7 @@ export default function NavbarClient({
 
   return (
     <motion.nav
-      initial={{ opacity: 0, y: reduceMotion ? 0 : -16 }}
+      initial={false}
       animate={{ opacity: 1, y: 0 }}
       transition={{
         duration: reduceMotion ? 0 : 0.5,

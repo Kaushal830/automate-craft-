@@ -8,9 +8,17 @@ export function SplashScreen() {
   const [show, setShow] = useState(true);
 
   useEffect(() => {
-    // Simulating initial load duration on hard refresh
-    const timer = setTimeout(() => setShow(false), 800);
-    return () => clearTimeout(timer);
+    const hide = () => {
+      window.setTimeout(() => setShow(false), 450);
+    };
+
+    if (document.readyState === "complete") {
+      hide();
+      return;
+    }
+
+    window.addEventListener("load", hide, { once: true });
+    return () => window.removeEventListener("load", hide);
   }, []);
 
   return (
@@ -20,9 +28,9 @@ export function SplashScreen() {
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.4, ease: "easeInOut" }}
-          className="fixed inset-0 z-[100000] flex items-center justify-center bg-[#111111]"
+          className="fixed inset-0 z-[100000] flex items-center justify-center bg-[#09090b]"
         >
-          <div className="relative flex items-center justify-center animate-pulse">
+          <div className="relative flex items-center justify-center">
             <Image
               src="/logo-new.png"
               alt="Loading..."

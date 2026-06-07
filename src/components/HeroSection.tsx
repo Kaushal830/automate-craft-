@@ -14,6 +14,7 @@ const HeroScene = dynamic(() => import("@/components/HeroScene"), { ssr: false }
 
 import { LoginModal } from "@/components/auth/LoginModal";
 import type { AuthenticatedUser } from "@/lib/automation";
+import { MAX_INITIAL_PROMPT_CHARS, truncateText } from "@/lib/ai/context-limits";
 
 const promptExamples = [
   "Send WhatsApp message when someone fills my form",
@@ -21,14 +22,39 @@ const promptExamples = [
   "Save form data to Google Sheets and notify me",
 ];
 
+type SpeechRecognitionEventLike = {
+  resultIndex: number;
+  results: {
+    length: number;
+    [index: number]: {
+      isFinal: boolean;
+      0: { transcript: string };
+    };
+  };
+};
+
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  onstart: (() => void) | null;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechWindow = Window & {
+  SpeechRecognition?: new () => SpeechRecognitionLike;
+  webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+};
+
 export default function HeroSection({
   user,
-  socialAuthEnabled,
-  ssoEnabled,
+  allowAnonymousSubmit = false,
 }: {
   user: AuthenticatedUser | null;
-  socialAuthEnabled: boolean;
-  ssoEnabled: boolean;
+  allowAnonymousSubmit?: boolean;
 }) {
   const router = useRouter();
   const reduceMotion = useReducedMotion();
@@ -40,7 +66,7 @@ export default function HeroSection({
 
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const heightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   const { scrollY } = useScroll();
   const heroYRaw = useTransform(scrollY, reduceMotion ? [0, 1] : [0, 280, 700], reduceMotion ? [0, 0] : [0, -16, -40]);
@@ -82,13 +108,14 @@ export default function HeroSection({
   const handleSubmit = () => {
     if (!prompt.trim()) return;
 
-    if (!user) {
+    if (!user && !allowAnonymousSubmit) {
       setShowAuthModal(true);
       return;
     }
 
     const chatId = Math.random().toString(36).substring(7);
-    const params = new URLSearchParams({ prompt });
+    const safePrompt = truncateText(prompt.trim(), MAX_INITIAL_PROMPT_CHARS);
+    const params = new URLSearchParams({ prompt: safePrompt });
     router.push(`/dashboard/chat/${chatId}?${params.toString()}`);
   };
 
@@ -102,8 +129,8 @@ export default function HeroSection({
       return;
     }
 
-    // @ts-expect-error - SpeechRecognition is not standard TS
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const win = window as SpeechWindow;
+    const SpeechRecognition = win.SpeechRecognition || win.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert("Speech recognition is not supported in your browser. Please use Chrome, Edge, or Safari.");
       return;
@@ -118,7 +145,7 @@ export default function HeroSection({
     if (startText.trim()) startText = startText.trim() + " ";
 
     recognition.onstart = () => setIsListening(true);
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event) => {
       let finalTranscript = "";
       let interimTranscript = "";
       for (let i = event.resultIndex; i < event.results.length; ++i) {
@@ -156,7 +183,7 @@ export default function HeroSection({
           <div className="mx-auto w-full max-w-4xl text-center">
             {/* ── Headline ── */}
             <motion.div
-              initial={{ opacity: 0, y: reduceMotion ? 0 : 18 }}
+              initial={false}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: reduceMotion ? 0 : 0.7, ease: [0.22, 1, 0.36, 1] }}
             >
@@ -179,9 +206,9 @@ export default function HeroSection({
 
             {/* ── Floating Composer Card ── */}
             <motion.div
-              initial={{ opacity: 0, y: reduceMotion ? 0 : 22 }}
+              initial={false}
               animate={{ opacity: 1, y: 0 }}
-              whileHover={reduceMotion ? undefined : { scale: 1.012, y: -3 }}
+              whileHover={{ scale: reduceMotion ? 1 : 1.012, y: reduceMotion ? 0 : -3 }}
               transition={{ duration: reduceMotion ? 0 : 0.55, delay: reduceMotion ? 0 : 0.08, ease: [0.22, 1, 0.36, 1] }}
               className="group relative mx-auto my-10 max-w-[600px] cursor-text"
               onClick={() => promptRef.current?.focus()}
@@ -227,7 +254,7 @@ export default function HeroSection({
                           <AnimatePresence mode="popLayout">
                             <motion.div
                               key={exampleIndex}
-                              initial={{ opacity: 0, y: 15 }}
+                              initial={false}
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: -15 }}
                               transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
@@ -304,7 +331,7 @@ export default function HeroSection({
       <LoginModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
-        nextUrl={`/dashboard/chat/new?prompt=${encodeURIComponent(prompt)}`}
+        nextUrl={`/dashboard/chat/new?prompt=${encodeURIComponent(truncateText(prompt.trim(), MAX_INITIAL_PROMPT_CHARS))}`}
       />
     </div>
   );

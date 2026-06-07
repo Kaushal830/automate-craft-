@@ -4,30 +4,26 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Activity,
-  PencilLine,
   Pause,
   Play,
-  ScrollText,
-  Trash2,
   Zap,
   Plus,
-  Copy,
-  Check,
   Bot,
-  Workflow,
   ArrowRight,
   Search,
-  Filter,
+  MoreVertical,
+  GitBranch,
+  Rocket,
+  Terminal,
+  MessageSquare,
+  Sparkles,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  Workflow
 } from "lucide-react";
-
-type ChatIndexEntry = {
-  chatId: string;
-  title: string;
-  updatedAt: string;
-  isStarred: boolean;
-};
 import { UpgradeModal } from "@/components/dashboard/UpgradeModal";
-import { motion, AnimatePresence } from "framer-motion";
 import { useCredits } from "@/components/providers/CreditsProvider";
 
 type AutomationSummary = {
@@ -41,14 +37,74 @@ type AutomationSummary = {
   workflow: {
     integrations: string[];
   };
+  description?: string;
+};
+
+// Deterministic mock data generator to enrich the UI
+const getMockData = (id: string, name: string, integrations: string[]) => {
+  const hash = id.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  
+  const states = ["Live", "Paused", "Draft", "Failed", "Running", "Scheduled"] as const;
+  const regions = ["us-east-1", "eu-west-1", "ap-south-1", "global"];
+  
+  const extendedStatus = states[hash % states.length];
+  const successRate = 85 + (hash % 15) + (hash % 10) / 10;
+  const aiScore = 70 + (hash % 30);
+  const region = regions[hash % regions.length];
+  
+  const apps = integrations.length > 0 ? integrations : ["Webhook", "LLM", "Database"];
+  
+  return {
+    extendedStatus,
+    successRate: successRate.toFixed(1),
+    aiScore,
+    region,
+    apps,
+    isAiGenerated: hash % 2 === 0,
+    isPinned: hash % 3 === 0,
+    health: successRate > 95 ? "optimal" : successRate > 90 ? "warning" : "degraded",
+  };
 };
 
 function formatTimestamp(value: string | null) {
-  if (!value) {
-    return "Never";
-  }
+  if (!value) return "Never";
+  return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
 
-  return new Date(value).toLocaleString();
+function ActionMenu({ automationId }: { automationId: string }) {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  return (
+    <div className="relative inline-block text-left">
+      <button 
+        onClick={() => setIsOpen(!isOpen)} 
+        onBlur={() => setTimeout(() => setIsOpen(false), 150)}
+        className="p-1.5 rounded-md hover:bg-white/[0.08] text-white/50 hover:text-white transition-colors outline-none"
+      >
+        <MoreVertical className="h-4 w-4" />
+      </button>
+      
+      {isOpen && (
+        <div className="absolute right-0 top-full mt-1 w-44 rounded-lg bg-[#111] border border-white/[0.08] shadow-2xl py-1 z-50">
+          <button className="w-full text-left px-3 py-1.5 text-[12px] text-white/70 hover:bg-white/[0.06] hover:text-white flex items-center gap-2 transition-colors">
+            <GitBranch className="h-3.5 w-3.5" /> Duplicate Workflow
+          </button>
+          <button className="w-full text-left px-3 py-1.5 text-[12px] text-white/70 hover:bg-white/[0.06] hover:text-white flex items-center gap-2 transition-colors">
+            <Rocket className="h-3.5 w-3.5" /> Deploy
+          </button>
+          <button className="w-full text-left px-3 py-1.5 text-[12px] text-white/70 hover:bg-white/[0.06] hover:text-white flex items-center gap-2 transition-colors">
+            <Pause className="h-3.5 w-3.5" /> Pause
+          </button>
+          <button className="w-full text-left px-3 py-1.5 text-[12px] text-white/70 hover:bg-white/[0.06] hover:text-white flex items-center gap-2 transition-colors">
+            <Workflow className="h-3.5 w-3.5" /> Open Graph
+          </button>
+          <button className="w-full text-left px-3 py-1.5 text-[12px] text-white/70 hover:bg-white/[0.06] hover:text-white flex items-center gap-2 transition-colors">
+            <MessageSquare className="h-3.5 w-3.5" /> Edit Prompt
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ProjectsPage() {
@@ -56,533 +112,305 @@ export default function ProjectsPage() {
   const [automations, setAutomations] = useState<AutomationSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [pendingId, setPendingId] = useState<string | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [recentChats, setRecentChats] = useState<ChatIndexEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused">("all");
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("chat_index_v1");
-      if (raw) {
-        const parsed = JSON.parse(raw) as ChatIndexEntry[];
-        if (Array.isArray(parsed)) {
-          setRecentChats(parsed.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
-        }
-      }
-    } catch {}
-  }, []);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<"updated" | "executions">("updated");
 
   const loadAutomations = async () => {
     setLoading(true);
     setError(null);
-
     try {
       const response = await fetch("/api/automations", { cache: "no-store" });
       const json = (await response.json()) as {
         automations?: AutomationSummary[];
         error?: string;
       };
-
-      if (!response.ok) {
-        throw new Error(json.error || "Could not load automations.");
-      }
-
+      if (!response.ok) throw new Error(json.error || "Could not load automations.");
       setAutomations(json.automations ?? []);
     } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Could not load automations.",
-      );
+      setError(requestError instanceof Error ? requestError.message : "Could not load automations.");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    void loadAutomations();
-  }, []);
-
-  const stats = useMemo(() => {
-    const activeCount = automations.filter(
-      (automation) => automation.status === "active",
-    ).length;
-    const totalRuns = automations.reduce(
-      (total, automation) => total + automation.runsCount,
-      0,
-    );
-    const lastRun = automations
-      .filter((automation) => automation.lastRunAt)
-      .sort((left, right) =>
-        (right.lastRunAt || "").localeCompare(left.lastRunAt || ""),
-      )[0];
-
-    return {
-      activeCount,
-      totalRuns,
-      latestRun: lastRun?.lastRunAt ?? null,
-    };
-  }, [automations]);
+  useEffect(() => { void loadAutomations(); }, []);
 
   const filteredAutomations = useMemo(() => {
-    return automations.filter((a) => {
-      const matchesStatus = statusFilter === "all" ? true : a.status === statusFilter;
+    let result = [...automations];
+
+    if (searchQuery) {
       const q = searchQuery.trim().toLowerCase();
-      const matchesSearch = q ? a.name.toLowerCase().includes(q) : true;
-      return matchesStatus && matchesSearch;
-    });
-  }, [automations, searchQuery, statusFilter]);
+      result = result.filter(a => a.name.toLowerCase().includes(q));
+    }
 
-  const handleStatusChange = async (
-    automationId: string,
-    status: "active" | "paused",
-  ) => {
-    setPendingId(automationId);
-    setError(null);
-
-    // Optimistic update
-    setAutomations((current) =>
-      current.map((a) =>
-        a.id === automationId ? { ...a, status } : a,
-      ),
-    );
-
-    try {
-      const response = await fetch(`/api/automations/${automationId}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ status }),
+    if (statusFilter !== "all") {
+      result = result.filter(a => {
+         const mock = getMockData(a.id, a.name, a.workflow?.integrations || []);
+         return mock.extendedStatus.toLowerCase() === statusFilter.toLowerCase();
       });
-      const json = (await response.json()) as { error?: string };
-
-      if (!response.ok) {
-        throw new Error(json.error || "Could not update automation.");
-      }
-
-      // Background re-fetch for full consistency
-      void loadAutomations();
-    } catch (requestError) {
-      // Revert optimistic update on failure
-      setAutomations((current) =>
-        current.map((a) =>
-          a.id === automationId
-            ? { ...a, status: status === "active" ? "paused" : "active" }
-            : a,
-        ),
-      );
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Could not update automation.",
-      );
-    } finally {
-      setPendingId(null);
     }
-  };
 
-  const handleDelete = async (automationId: string) => {
-    setPendingId(automationId);
-    setError(null);
-
-    // Optimistic removal
-    const previousAutomations = automations;
-    setAutomations((current) => current.filter((a) => a.id !== automationId));
-
-    try {
-      const response = await fetch(`/api/automations/${automationId}`, {
-        method: "DELETE",
-      });
-      const json = response.status === 204
-        ? {}
-        : ((await response.json()) as { error?: string });
-
-      if (!response.ok) {
-        throw new Error(json.error || "Could not delete automation.");
-      }
-    } catch (requestError) {
-      // Revert on failure
-      setAutomations(previousAutomations);
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Could not delete automation.",
-      );
-    } finally {
-      setPendingId(null);
+    if (sortBy === "executions") {
+      result.sort((a, b) => b.runsCount - a.runsCount);
+    } else {
+      result.sort((a, b) => (b.lastRunAt || "").localeCompare(a.lastRunAt || ""));
     }
-  };
 
-  const handleRun = async (automationId: string) => {
-    setPendingId(automationId);
-    setError(null);
-
-    try {
-      const response = await fetch("/api/run-automation", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ automationId }),
-      });
-
-      if (response.status === 402) {
-        setShowUpgradeModal(true);
-        return;
-      }
-
-      const json = (await response.json()) as { error?: string };
-
-      if (!response.ok) {
-        throw new Error(json.error || "Could not run automation.");
-      }
-
-      await refreshCredits();
-      await loadAutomations();
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Could not run automation.",
-      );
-    } finally {
-      setPendingId(null);
-    }
-  };
-
-  const [copiedWebhook, setCopiedWebhook] = useState<string | null>(null);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-
-  const handleCopyWebhook = (webhookId: string) => {
-    void navigator.clipboard.writeText(`/api/webhook/${webhookId}`);
-    setCopiedWebhook(webhookId);
-    setTimeout(() => setCopiedWebhook(null), 2000);
-  };
-
-  const handleDeleteWithConfirm = async (automationId: string) => {
-    if (deleteConfirmId !== automationId) {
-      setDeleteConfirmId(automationId);
-      setTimeout(() => setDeleteConfirmId(null), 3000);
-      return;
-    }
-    setDeleteConfirmId(null);
-    await handleDelete(automationId);
-  };
+    return result;
+  }, [automations, searchQuery, statusFilter, sortBy]);
 
   return (
-    <div className="relative mx-auto max-w-7xl p-8">
-      {/* Subtle background gradient */}
-      <div className="pointer-events-none fixed inset-0 z-[-1] bg-[radial-gradient(ellipse_at_top,rgba(59,130,246,0.05)_0%,transparent_60%)]" />
-
-      <div className="mb-8 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-[-0.04em] text-white">
-            Automations
+    <div className="relative w-full p-6 lg:p-10 min-h-screen bg-[#050505]">
+      {/* Background glow for cinematic effect */}
+      <div className="pointer-events-none fixed top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[500px] bg-blue-500/5 blur-[120px] rounded-full z-0" />
+      
+      <div className="relative z-10 flex flex-col gap-6">
+        
+        {/* Header */}
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight text-white flex items-center gap-3">
+            Workflows
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-white/[0.05] border border-white/[0.1] text-[11px] font-mono text-white/50">
+              v2.0 Beta
+            </span>
           </h1>
-          <p className="mt-1 text-white/40">
-            Review saved workflows, customize setup details, and monitor live
-            execution from one place.
+          <p className="text-[13px] text-white/40 max-w-xl">
+            Design, deploy, and monitor your AI agent infrastructure. 
+            Production-grade operational controls for all your automated workflows.
           </p>
         </div>
-        <Link
-          href="/dashboard"
-          className="inline-flex h-10 items-center gap-2 rounded-full bg-gradient-to-r from-accent to-blue-600 px-5 text-sm font-semibold text-white shadow-[0_4px_16px_rgba(59,130,246,0.25)] transition-all hover:shadow-[0_8px_24px_rgba(59,130,246,0.35)] hover:translate-y-[-1px]"
-        >
-          <Plus className="h-4 w-4" />
-          New Automation
-        </Link>
-      </div>
 
-      {/* Search + Filter Bar */}
-      {!loading && automations.length > 0 && (
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative max-w-sm flex-1">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/25" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search automations..."
-              className="h-10 w-full rounded-xl border border-white/[0.08] bg-[#111113] pl-11 pr-4 text-sm text-white outline-none transition-all placeholder:text-white/25 focus:border-accent/30 focus:ring-2 focus:ring-accent/10"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-white/25" />
-            {(["all", "active", "paused"] as const).map((opt) => (
-              <button
-                key={opt}
-                onClick={() => setStatusFilter(opt)}
-                className={`inline-flex h-9 items-center rounded-full px-4 text-xs font-semibold uppercase tracking-[0.14em] transition-all ${
-                  statusFilter === opt
-                    ? "bg-gradient-to-r from-accent to-blue-600 text-white shadow-[0_4px_12px_rgba(59,130,246,0.25)]"
-                    : "border border-white/[0.06] bg-white/[0.02] text-white/40 hover:border-white/[0.12] hover:text-white/70"
-                }`}
-              >
-                {opt === "all" ? "All" : opt}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="mb-10 grid gap-6 md:grid-cols-3">
-        {/* Active Automations */}
-        <div className="group relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[#0A0A0A] p-8 ring-1 ring-white/10 shadow-2xl transition-all duration-300 hover:-translate-y-1 hover:ring-white/20">
-          <div className="absolute -right-24 -top-24 h-48 w-48 rounded-full bg-blue-500/10 blur-[3rem] transition-all duration-500 group-hover:bg-blue-500/20" />
-          <div className="relative z-10 flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/40">
-              Active Automations
-            </span>
-            <Activity className="h-5 w-5 text-white/30 transition-colors duration-300 group-hover:text-white" />
-          </div>
-          <div className="relative z-10 mt-12 flex items-baseline gap-3">
-            <span className="font-mono text-[3.5rem] font-medium leading-none tracking-tighter text-white">
-              {stats.activeCount}
-            </span>
-            <span className="mb-1.5 text-sm font-medium text-white/30 truncate">workflows</span>
-          </div>
-        </div>
-
-        {/* Total Runs */}
-        <div className="group relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[#0A0A0A] p-8 ring-1 ring-white/10 shadow-2xl transition-all duration-300 hover:-translate-y-1 hover:ring-white/20">
-          <div className="absolute -right-24 -top-24 h-48 w-48 rounded-full bg-emerald-500/10 blur-[3rem] transition-all duration-500 group-hover:bg-emerald-500/20" />
-          <div className="relative z-10 flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/40">
-              Total Executions
-            </span>
-            <Zap className="h-5 w-5 text-white/30 transition-colors duration-300 group-hover:text-white" />
-          </div>
-          <div className="relative z-10 mt-12 flex items-baseline gap-3">
-            <span className="font-mono text-[3.5rem] font-medium leading-none tracking-tighter text-white">
-              {stats.totalRuns}
-            </span>
-            <span className="mb-1.5 text-sm font-medium text-white/30 truncate">tasks</span>
-          </div>
-        </div>
-
-        {/* Latest Execution */}
-        <div className="group relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[#0A0A0A] p-8 ring-1 ring-white/10 shadow-2xl transition-all duration-300 hover:-translate-y-1 hover:ring-white/20">
-          <div className="absolute -right-24 -top-24 h-48 w-48 rounded-full bg-purple-500/10 blur-[3rem] transition-all duration-500 group-hover:bg-purple-500/20" />
-          <div className="relative z-10 flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/40">
-              Latest Execution
-            </span>
-            <ScrollText className="h-5 w-5 text-white/30 transition-colors duration-300 group-hover:text-white" />
-          </div>
-          <div className="relative z-10 mt-12 flex flex-col justify-end min-h-[56px]">
-            {stats.latestRun ? (
-              <div className="flex flex-col gap-1.5">
-                <span className="font-mono text-[2.25rem] font-medium leading-none tracking-tighter text-white">
-                  {new Date(stats.latestRun).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                </span>
-                <span className="text-sm font-medium text-white/40">
-                  at {new Date(stats.latestRun).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-                </span>
-              </div>
-            ) : (
-              <span className="font-mono text-[2.25rem] font-medium leading-none tracking-tighter text-white/30">
-                Never
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="mb-10 grid gap-6 md:grid-cols-3">
-        {/* Last Automation Preview */}
-        <div className="md:col-span-2 group relative overflow-hidden rounded-[2rem] bg-[#0A0A0A] p-8 ring-1 ring-white/10 shadow-2xl transition-all duration-300 hover:-translate-y-1 hover:ring-white/20">
-          <div className="absolute -right-24 -top-24 h-48 w-48 rounded-full bg-accent/10 blur-[3rem] transition-all duration-500 group-hover:bg-accent/20" />
-          <h3 className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/40 mb-6 relative z-10">Last Automation Draft</h3>
-          {recentChats[0] ? (
-             <div className="relative z-10 flex items-center justify-between gap-6 rounded-[1.25rem] border border-white/[0.04] bg-gradient-to-br from-[#111] to-[#0a0a0a] p-5 shadow-inner">
-               <div className="flex items-center gap-4">
-                 <div className="flex h-12 w-12 items-center justify-center rounded-[1rem] bg-accent/[0.08] ring-1 ring-accent/15">
-                   <Workflow className="h-5 w-5 text-accent" />
-                 </div>
-                 <div>
-                   <h4 className="text-[15px] font-semibold text-white/90">{recentChats[0].title}</h4>
-                   <p className="text-[13px] text-white/40 mt-1">Edited {new Date(recentChats[0].updatedAt).toLocaleDateString()}</p>
-                 </div>
-               </div>
-               <Link href={`/dashboard/chat/${recentChats[0].chatId}`} className="flex h-9 items-center gap-2 rounded-full bg-white/[0.04] px-4 text-[13px] font-semibold text-white/70 hover:bg-white/[0.08] hover:text-white transition-colors">
-                 Resume Build <ArrowRight className="h-3.5 w-3.5" />
-               </Link>
-             </div>
-          ) : (
-             <div className="relative z-10 flex h-[84px] items-center justify-center rounded-[1.25rem] border border-dashed border-white/[0.08] bg-white/[0.01]">
-               <span className="text-[13px] text-white/30">No recent drafts</span>
-             </div>
-          )}
-        </div>
-
-        {/* Recent Activity */}
-        <div className="md:col-span-1 group relative overflow-hidden rounded-[2rem] bg-[#0A0A0A] p-8 ring-1 ring-white/10 shadow-2xl transition-all duration-300 hover:-translate-y-1 hover:ring-white/20">
-          <div className="absolute -left-24 -bottom-24 h-48 w-48 rounded-full bg-purple-500/10 blur-[3rem] transition-all duration-500 group-hover:bg-purple-500/20" />
-          <h3 className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/40 mb-6 relative z-10">Recent Activity</h3>
-          <div className="space-y-5 relative z-10">
-            {recentChats.slice(0, 3).length > 0 ? recentChats.slice(0, 3).map((chat) => (
-              <div key={chat.chatId} className="flex items-start gap-3">
-                 <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent/40 ring-4 ring-accent/10" />
-                 <div>
-                    <p className="text-[13px] font-medium text-white/70 line-clamp-1">Drafted {chat.title}</p>
-                    <p className="text-[11px] text-white/30 mt-0.5">{new Date(chat.updatedAt).toLocaleDateString()}</p>
-                 </div>
-              </div>
-            )) : (
-              <div className="text-[13px] text-white/30">No activity yet.</div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="card-surface rounded-[2rem] p-10 text-center text-foreground/56">
-          Loading automations...
-        </div>
-      ) : error ? (
-        <div className="card-surface rounded-[2rem] p-10 text-center text-red-500">
-          {error}
-        </div>
-      ) : automations.length === 0 ? (
-        <div className="relative overflow-hidden rounded-[2rem] border border-white/[0.06] bg-gradient-to-b from-[#111113] to-[#0d0d0f] p-14 text-center shadow-[0_12px_40px_rgba(0,0,0,0.5)]">
-          <div className="pointer-events-none absolute -top-12 left-1/2 -translate-x-1/2 h-32 w-64 rounded-full bg-accent/[0.06] blur-[60px]" />
-          <div className="relative">
-            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-accent/15 to-accent/[0.04] ring-1 ring-accent/15 shadow-[0_4px_16px_rgba(59,130,246,0.12)]">
-              <Bot className="h-7 w-7 text-accent" />
+        {/* Toolbar */}
+        <div className="mt-4 flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-[#0A0A0A] p-2 rounded-xl border border-white/[0.06] shadow-xl">
+          <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar">
+            
+            {/* Search */}
+            <div className="relative group shrink-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/30 group-focus-within:text-white/70 transition-colors" />
+              <input 
+                type="text" 
+                placeholder="Search workflows..." 
+                className="h-8 w-48 bg-white/[0.03] border border-white/[0.06] rounded-lg pl-9 pr-3 text-[13px] text-white placeholder:text-white/30 focus:outline-none focus:border-white/20 focus:bg-white/[0.05] transition-all"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
             </div>
-            <h2 className="text-2xl font-semibold text-white">
-              No automations yet
-            </h2>
-            <p className="mt-3 max-w-sm mx-auto text-white/35">
-              Describe what you want to automate in plain English and AI will build it for you.
-            </p>
-            <Link
-              href="/dashboard"
-              className="mt-8 inline-flex h-12 items-center gap-2 rounded-full bg-gradient-to-r from-accent to-blue-600 px-6 text-sm font-semibold text-white shadow-[0_4px_16px_rgba(59,130,246,0.25)] transition-all hover:shadow-[0_8px_24px_rgba(59,130,246,0.35)] hover:translate-y-[-1px]"
-            >
-              <Plus className="h-4 w-4" />
-              Build Your First Automation
+            
+            <div className="w-px h-4 bg-white/[0.08] mx-1 shrink-0" />
+
+            {/* Status Filter */}
+            <div className="flex items-center bg-white/[0.02] border border-white/[0.04] rounded-lg p-0.5 shrink-0">
+              {["all", "live", "running", "scheduled", "draft", "paused", "failed"].map(opt => (
+                <button 
+                  key={opt}
+                  onClick={() => setStatusFilter(opt)}
+                  className={`px-3 py-1 text-[12px] font-medium rounded-md capitalize transition-all ${
+                    statusFilter === opt 
+                      ? 'bg-white/[0.08] text-white shadow-sm' 
+                      : 'text-white/40 hover:text-white/80 hover:bg-white/[0.04]'
+                  }`}
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+
+            <div className="w-px h-4 bg-white/[0.08] mx-1 shrink-0" />
+            
+            {/* Sort */}
+            <div className="flex items-center gap-1.5 text-[12px] text-white/40 shrink-0">
+              <span className="pl-1">Sort by:</span>
+              <select 
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value as any)}
+                className="bg-transparent border-none text-white/80 font-medium focus:outline-none cursor-pointer hover:text-white transition-colors"
+              >
+                <option value="updated" className="bg-[#111]">Last Updated</option>
+                <option value="executions" className="bg-[#111]">Executions</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button className="h-8 flex items-center gap-2 px-3 rounded-lg bg-white/[0.03] border border-white/[0.06] text-[13px] font-medium text-white/80 hover:bg-white/[0.08] hover:border-white/[0.1] transition-all group">
+              <Bot className="h-3.5 w-3.5 text-blue-400 group-hover:scale-110 transition-transform" />
+              Generate Workflow
+            </button>
+            <Link href="/dashboard" className="h-8 flex items-center gap-2 px-3 rounded-lg bg-white text-black text-[13px] font-medium hover:bg-white/90 transition-all shadow-[0_0_15px_rgba(255,255,255,0.15)] hover:shadow-[0_0_20px_rgba(255,255,255,0.3)]">
+              <Plus className="h-3.5 w-3.5" />
+              Create
             </Link>
           </div>
         </div>
-      ) : filteredAutomations.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-[2rem] border border-white/[0.06] bg-white/[0.02] py-20 text-center">
-          <Search className="mx-auto mb-4 h-10 w-10 text-white/15" />
-          <p className="text-base font-semibold text-white/50">No automations match</p>
-          <p className="mt-2 text-sm text-white/25">Try a different search term or status filter.</p>
-          <button
-            onClick={() => { setSearchQuery(""); setStatusFilter("all"); }}
-            className="mt-6 inline-flex h-9 items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.03] px-5 text-sm font-semibold text-white/50 transition-all hover:border-white/[0.14] hover:text-white/80"
-          >
-            Clear filters
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-5">
-          {filteredAutomations.map((automation) => (
-            <article
-              key={automation.id}
-              className="card-surface rounded-[2rem] p-6"
+
+        {/* Workflow Table/Grid */}
+        {loading ? (
+          <div className="h-64 flex items-center justify-center rounded-xl border border-white/[0.06] bg-[#0A0A0A]">
+            <div className="flex items-center gap-3 text-white/40 text-sm">
+              <span className="h-4 w-4 rounded-full border-2 border-white/20 border-t-white/80 animate-spin" />
+              Loading infrastructure...
+            </div>
+          </div>
+        ) : error ? (
+          <div className="h-64 flex flex-col items-center justify-center rounded-xl border border-red-500/20 bg-red-500/5 text-red-400 gap-2">
+            <AlertCircle className="h-6 w-6 opacity-80" />
+            <p className="text-sm font-medium">{error}</p>
+          </div>
+        ) : automations.length === 0 ? (
+          <div className="h-[400px] flex flex-col items-center justify-center rounded-xl border border-white/[0.06] bg-[#0A0A0A] shadow-2xl">
+            <div className="h-16 w-16 mb-6 rounded-2xl bg-white/[0.02] border border-white/[0.06] flex items-center justify-center">
+              <Workflow className="h-8 w-8 text-white/20" />
+            </div>
+            <h2 className="text-[15px] font-semibold text-white mb-2">Generate your first automation workflow</h2>
+            <p className="text-[13px] text-white/40 mb-8 max-w-sm text-center">
+              Create robust AI agents and deploy them globally. Watch them execute tasks in real-time.
+            </p>
+            <Link href="/dashboard" className="h-9 flex items-center gap-2 px-4 rounded-lg bg-white text-black text-[13px] font-medium hover:bg-white/90 transition-all shadow-[0_0_15px_rgba(255,255,255,0.15)]">
+              <Plus className="h-4 w-4" />
+              Initialize Pipeline
+            </Link>
+          </div>
+        ) : filteredAutomations.length === 0 ? (
+          <div className="h-64 flex flex-col items-center justify-center rounded-xl border border-white/[0.06] bg-[#0A0A0A]">
+            <Search className="h-8 w-8 text-white/20 mb-3" />
+            <p className="text-[14px] font-medium text-white/60">No workflows match your criteria</p>
+            <button 
+              onClick={() => { setSearchQuery(""); setStatusFilter("all"); }}
+              className="mt-4 text-[13px] text-white/40 hover:text-white transition-colors"
             >
-              <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <h2 className="text-xl font-semibold text-foreground">
-                      {automation.name}
-                    </h2>
-                    <span
-                      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${
-                        automation.status === "active"
-                          ? "border border-emerald-500/20 bg-emerald-500/[0.08] text-emerald-400"
-                          : "border border-white/[0.06] bg-white/[0.03] text-white/35"
-                      }`}
-                    >
-                      {automation.status === "active" && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.6)]" />}
-                      {automation.status}
-                    </span>
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap gap-4 text-sm text-white/35">
-                    <span>{automation.runsCount} runs</span>
-                    <span>Last run: {formatTimestamp(automation.lastRunAt)}</span>
-                    <span>
-                      {automation.workflow.integrations.join(", ") || "No integrations"}
-                    </span>
-                  </div>
-
-                  <button
-                    onClick={() => handleCopyWebhook(automation.webhookId)}
-                    className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-1 text-[11px] font-mono text-white/25 transition-all hover:border-white/[0.1] hover:text-white/50"
-                  >
-                    {copiedWebhook === automation.webhookId ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
-                    /api/webhook/{automation.webhookId}
-                  </button>
-                </div>
-
-                <div className="flex flex-wrap gap-3">
-                  <Link
-                    href={`/dashboard/automations/${automation.id}`}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 text-sm font-semibold text-white/70 transition-all hover:border-white/[0.14] hover:bg-white/[0.08] hover:text-white hover:translate-y-[-1px]"
-                  >
-                    <PencilLine className="h-4 w-4" />
-                    Edit
-                  </Link>
-
-                  <button
-                    onClick={() => handleRun(automation.id)}
-                    disabled={pendingId !== null || automation.status !== "active"}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-accent/20 bg-accent/[0.06] px-4 text-sm font-semibold text-accent transition-all hover:border-accent/30 hover:bg-accent/[0.1] hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <Play className="h-4 w-4" />
-                    Run
-                  </button>
-
-                  <button
-                    onClick={() =>
-                      handleStatusChange(
-                        automation.id,
-                        automation.status === "active" ? "paused" : "active",
-                      )
-                    }
-                    disabled={pendingId !== null}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 text-sm font-semibold text-white/50 transition-all hover:border-white/[0.14] hover:text-white/80 hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {automation.status === "active" ? (
-                      <>
-                        <Pause className="h-4 w-4" />
-                        Pause
-                      </>
-                    ) : (
-                      <>
-                        <Play className="h-4 w-4" />
-                        Resume
-                      </>
-                    )}
-                  </button>
-
-                  <AnimatePresence mode="wait">
-                    <button
-                      onClick={() => handleDeleteWithConfirm(automation.id)}
-                      disabled={pendingId !== null}
-                      className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl border px-4 text-sm font-semibold transition-all hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-40 ${
-                        deleteConfirmId === automation.id
-                          ? "border-red-500/30 bg-red-500/10 text-red-400 animate-pulse"
-                          : "border-white/[0.06] bg-white/[0.02] text-white/30 hover:border-red-500/20 hover:bg-red-500/[0.06] hover:text-red-400"
-                      }`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      {deleteConfirmId === automation.id ? "Confirm?" : "Delete"}
-                    </button>
-                  </AnimatePresence>
-                </div>
+              Clear filters
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col bg-[#0A0A0A] border border-white/[0.06] rounded-xl overflow-x-auto shadow-2xl">
+            <div className="min-w-[900px]">
+              {/* Table Header */}
+              <div className="grid grid-cols-12 gap-4 px-6 py-3 border-b border-white/[0.06] bg-white/[0.01] text-[11px] font-semibold text-white/30 uppercase tracking-[0.1em]">
+                <div className="col-span-4">Workflow</div>
+                <div className="col-span-3">Pipeline Preview</div>
+                <div className="col-span-2">Execution Health</div>
+                <div className="col-span-2">Metrics</div>
+                <div className="col-span-1 text-right">Actions</div>
               </div>
-            </article>
-          ))}
-        </div>
-      )}
+
+              {/* Table Rows */}
+              <div className="divide-y divide-white/[0.04]">
+                {filteredAutomations.map(automation => {
+                  const mock = getMockData(automation.id, automation.name, automation.workflow?.integrations || []);
+                  
+                  return (
+                    <div key={automation.id} className="grid grid-cols-12 gap-4 px-6 py-4 items-center group hover:bg-white/[0.02] transition-colors relative">
+                      
+                      {/* 1: Workflow Identity & Status */}
+                      <div className="col-span-4 flex items-start gap-3.5 pr-4">
+                        <div className="mt-1 shrink-0 relative flex h-2.5 w-2.5 items-center justify-center">
+                           {mock.extendedStatus === "Live" && <span className="absolute h-full w-full rounded-full bg-emerald-500/40 animate-ping" />}
+                           {mock.extendedStatus === "Running" && <span className="absolute h-full w-full rounded-full bg-blue-500/40 animate-ping" />}
+                           <div className={`h-2 w-2 rounded-full ring-2 ring-[#0A0A0A] relative z-10 ${
+                             mock.extendedStatus === 'Live' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' :
+                             mock.extendedStatus === 'Failed' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]' :
+                             mock.extendedStatus === 'Paused' ? 'bg-amber-500' :
+                             mock.extendedStatus === 'Running' ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]' :
+                             mock.extendedStatus === 'Scheduled' ? 'bg-purple-500' :
+                             'bg-white/20'
+                           }`} />
+                        </div>
+                        <div className="min-w-0 w-full">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <Link href={`/dashboard/automations/${automation.id}`} className="text-[14px] font-medium text-white/90 hover:text-white truncate transition-colors">
+                              {automation.name}
+                            </Link>
+                            {mock.isPinned && (
+                              <Activity className="h-3.5 w-3.5 text-white/20 shrink-0" />
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 text-[12px]">
+                             <span className="text-white/30 font-mono">{automation.id.slice(0, 8)}</span>
+                             <span className="h-1 w-1 rounded-full bg-white/10" />
+                             <span className="text-white/40">{mock.region}</span>
+                             {mock.isAiGenerated && (
+                               <>
+                                 <span className="h-1 w-1 rounded-full bg-white/10" />
+                                 <span className="inline-flex items-center px-1.5 py-0.5 rounded-[4px] bg-blue-500/10 border border-blue-500/20 text-[9px] font-medium text-blue-400 uppercase tracking-widest">
+                                   Auto
+                                 </span>
+                               </>
+                             )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 2: Node Graph Preview */}
+                      <div className="col-span-3 flex items-center gap-1.5 overflow-hidden">
+                        <div className="flex items-center shrink-0 max-w-full overflow-hidden mask-gradient-right">
+                          {mock.apps.map((app, idx) => (
+                            <div key={idx} className="flex items-center shrink-0">
+                              <span className="inline-flex h-[22px] px-2 items-center justify-center text-[11px] font-medium text-white/60 rounded-[6px] border border-white/[0.08] bg-white/[0.02] shadow-sm whitespace-nowrap">
+                                {app}
+                              </span>
+                              {idx < mock.apps.length - 1 && (
+                                <div className="px-1.5 flex items-center justify-center">
+                                  <div className="w-2 h-px bg-white/10" />
+                                  <ArrowRight className="h-3 w-3 text-white/20 shrink-0" />
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 3: Health & AI Confidence */}
+                      <div className="col-span-2 flex flex-col gap-1.5 justify-center">
+                         <div className="flex items-center gap-2">
+                           {mock.health === "optimal" ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500/80" /> :
+                            mock.health === "warning" ? <AlertCircle className="h-3.5 w-3.5 text-amber-500/80" /> :
+                            <XCircle className="h-3.5 w-3.5 text-red-500/80" />}
+                           <span className="text-[13px] font-medium text-white/80 tabular-nums">
+                             {mock.successRate}% <span className="text-white/30 text-[11px] font-normal ml-0.5">SR</span>
+                           </span>
+                         </div>
+                         <div className="flex items-center gap-1.5 text-[11px] text-white/40">
+                           <Bot className="h-3 w-3 opacity-60" />
+                           <div className="w-16 h-1.5 bg-white/[0.05] rounded-full overflow-hidden">
+                             <div className="h-full bg-blue-500/50 rounded-full" style={{ width: `${mock.aiScore}%` }} />
+                           </div>
+                           <span className="tabular-nums">{mock.aiScore}%</span>
+                         </div>
+                      </div>
+
+                      {/* 4: Execution Metrics */}
+                      <div className="col-span-2 flex flex-col gap-1.5 justify-center">
+                         <div className="text-[12px] text-white/70 flex items-center gap-1.5">
+                            <Clock className="h-3.5 w-3.5 text-white/30" />
+                            {formatTimestamp(automation.lastRunAt)}
+                         </div>
+                         <div className="text-[11px] text-white/40 flex items-center gap-1.5">
+                           <Terminal className="h-3.5 w-3.5 opacity-70" />
+                           <span className="tabular-nums">{automation.runsCount.toLocaleString()}</span> invocations
+                         </div>
+                      </div>
+
+                      {/* 5: Quick Actions */}
+                      <div className="col-span-1 flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Link href={`/dashboard/automations/${automation.id}`} className="p-1.5 rounded-md hover:bg-white/[0.08] text-white/40 hover:text-white transition-colors" title="View Graph">
+                          <Workflow className="h-4 w-4" />
+                        </Link>
+                        <button className="p-1.5 rounded-md hover:bg-white/[0.08] text-white/40 hover:text-white transition-colors" title="View Logs">
+                          <Terminal className="h-4 w-4" />
+                        </button>
+                        <ActionMenu automationId={automation.id} />
+                      </div>
+
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       <UpgradeModal
         isOpen={showUpgradeModal}

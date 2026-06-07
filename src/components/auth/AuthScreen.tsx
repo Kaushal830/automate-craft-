@@ -285,7 +285,7 @@ export default function AuthScreen({
 
       {/* ═══════════ LEFT PANEL — Auth form ═══════════ */}
       <motion.div
-        initial={{ opacity: 0 }}
+        initial={false}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.45 }}
         className="relative flex w-full flex-col items-center justify-center px-6 py-10 lg:w-[50%]"
@@ -294,7 +294,7 @@ export default function AuthScreen({
 
           {/* Logo + Heading */}
           <motion.div
-            initial={{ opacity: 0, y: -8 }}
+            initial={false}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.05 }}
             className="mb-8 flex flex-col items-center"
@@ -328,7 +328,7 @@ export default function AuthScreen({
           <AnimatePresence>
             {displayError && (
               <motion.div
-                initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                initial={false}
                 animate={{ opacity: 1, height: "auto", marginBottom: 16 }}
                 exit={{ opacity: 0, height: 0, marginBottom: 0 }}
                 className="overflow-hidden rounded-xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-center text-[0.825rem] font-medium text-red-400"
@@ -346,7 +346,7 @@ export default function AuthScreen({
               {loginStep === "methods" ? (
                 <motion.div
                   key="step-methods"
-                  initial={{ opacity: 0, x: -24 }}
+                  initial={false}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -24 }}
                   transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
@@ -385,7 +385,7 @@ export default function AuthScreen({
                 /* STEP 2: Email + Password + Magic Link */
                 <motion.div
                   key="step-email"
-                  initial={{ opacity: 0, x: 24 }}
+                  initial={false}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 24 }}
                   transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
@@ -401,7 +401,7 @@ export default function AuthScreen({
 
                   {magicSent ? (
                     <motion.div
-                      initial={{ opacity: 0, scale: 0.96 }}
+                      initial={false}
                       animate={{ opacity: 1, scale: 1 }}
                       className="flex flex-col items-center py-4 text-center"
                     >
@@ -460,7 +460,7 @@ export default function AuthScreen({
                 /* STEP 3: Forgot Password */
                 <motion.div
                   key="step-forgot"
-                  initial={{ opacity: 0, x: 24 }}
+                  initial={false}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 24 }}
                   transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
@@ -476,7 +476,7 @@ export default function AuthScreen({
 
                   {resetSent ? (
                     <motion.div
-                      initial={{ opacity: 0, scale: 0.96 }}
+                      initial={false}
                       animate={{ opacity: 1, scale: 1 }}
                       className="flex flex-col items-center py-4 text-center"
                     >
@@ -516,7 +516,7 @@ export default function AuthScreen({
           ) : (
             /* ══════════ SIGNUP FLOW — single step ══════════ */
             <motion.div
-              initial={{ opacity: 0, y: 12 }}
+              initial={false}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45, delay: 0.12 }}
             >
@@ -568,7 +568,7 @@ export default function AuthScreen({
 
       {/* ═══════════ RIGHT PANEL — Hero visual ═══════════ */}
       <motion.div
-        initial={{ opacity: 0 }}
+        initial={false}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.7, delay: 0.25 }}
         className="hidden lg:block lg:w-[50%]"

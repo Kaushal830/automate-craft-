@@ -102,7 +102,7 @@ export default function VerifyEmailScreen() {
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(255,255,255,0.015),_transparent_40%),radial-gradient(circle_at_bottom_left,_rgba(79,142,247,0.03),_transparent_40%)]" />
 
       <motion.section
-        initial={{ opacity: 0, scale: 0.98, y: 8 }}
+        initial={false}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
         className="card-surface relative w-full max-w-[440px] rounded-3xl p-8 sm:p-10 text-foreground shadow-2xl shadow-black/40 border border-white/5"
@@ -119,7 +119,7 @@ export default function VerifyEmailScreen() {
 
         <div className="mb-8 flex justify-center">
           <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
+            initial={false}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.15, type: "spring", bounce: 0.5 }}
             className="relative flex h-[5.5rem] w-[5.5rem] items-center justify-center rounded-[2rem] bg-gradient-to-b from-accent/20 to-accent/5 ring-1 ring-accent/20"

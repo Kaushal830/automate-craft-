@@ -78,7 +78,7 @@ export interface ChatSession {
    */
   autoSubmittedAt: number | null;
 
-  /* ── conversation persistence ────────────────────────────────── */
+  /* ── conversation persistence ────────────────────────────── */
   /**
    * Snapshot of `useChat` messages mirrored from the AI SDK after each
    * change. Used to seed `useChat({messages})` on mount so a browser
@@ -89,6 +89,26 @@ export interface ChatSession {
    * Capped at MESSAGES_PERSIST_LIMIT to keep localStorage bounded.
    */
   persistedMessages: UIMessage[];
+
+  /* ── UX enhancements ─────────────────────────────────── */
+  /**
+   * Rolling history of user-sent prompt texts for ↑ key navigation.
+   * Most recent first. Capped at 20.
+   */
+  promptHistory: string[];
+
+  /**
+   * Model selected for this session (e.g. "gpt-4o", "gpt-4o-mini").
+   * Sent to backend as `selectedModel` in the request body.
+   * Defaults to the env-configured model if not set.
+   */
+  selectedModel: string | null;
+
+  /**
+   * Per-message feedback: thumbs-up (+1) or thumbs-down (-1).
+   * Stored locally; optionally synced to /api/feedback.
+   */
+  feedbackLog: Array<{ messageId: string; rating: 1 | -1; timestamp: number }>;
 }
 
 /** Cap on persisted messages per chat (keeps localStorage reasonable). */
@@ -101,6 +121,9 @@ interface ChatStore {
   updateNode: (id: string, nodeId: string, update: Partial<FlowNode>) => void;
   setNodes: (id: string, nodes: FlowNode[]) => void;
   resetSession: (id: string) => void;
+  pushPromptHistory: (id: string, prompt: string) => void;
+  setFeedback: (id: string, messageId: string, rating: 1 | -1) => void;
+  setSelectedModel: (id: string, model: string | null) => void;
 }
 
 const defaultSession: ChatSession = {
@@ -123,6 +146,9 @@ const defaultSession: ChatSession = {
   ultraThinking: false,
   autoSubmittedAt: null,
   persistedMessages: [],
+  promptHistory: [],
+  selectedModel: null,
+  feedbackLog: [],
 };
 
 /**
@@ -187,6 +213,46 @@ export const useChatStore = create<ChatStore>()(
             [id]: withTouched({ ...defaultSession }),
           },
         }));
+      },
+      pushPromptHistory: (id, prompt) => {
+        set((state) => {
+          const session = state.sessions[id] || defaultSession;
+          const existing = session.promptHistory || [];
+          // Dedupe and prepend, cap at 20
+          const next = [prompt, ...existing.filter((p) => p !== prompt)].slice(0, 20);
+          return {
+            sessions: {
+              ...state.sessions,
+              [id]: withTouched({ ...session, promptHistory: next }),
+            },
+          };
+        });
+      },
+      setFeedback: (id, messageId, rating) => {
+        set((state) => {
+          const session = state.sessions[id] || defaultSession;
+          const existing = (session.feedbackLog || []).filter((f) => f.messageId !== messageId);
+          return {
+            sessions: {
+              ...state.sessions,
+              [id]: withTouched({
+                ...session,
+                feedbackLog: [...existing, { messageId, rating, timestamp: Date.now() }],
+              }),
+            },
+          };
+        });
+      },
+      setSelectedModel: (id, model) => {
+        set((state) => {
+          const session = state.sessions[id] || defaultSession;
+          return {
+            sessions: {
+              ...state.sessions,
+              [id]: withTouched({ ...session, selectedModel: model }),
+            },
+          };
+        });
       },
     }),
     {

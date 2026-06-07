@@ -1,8 +1,7 @@
 import HeroSection from "@/components/HeroSection";
 import ProductProofSection from "@/components/home/ProductProofSection";
 import { getCurrentUser } from "@/lib/auth";
-import { isSsoEnabled, isSupabaseAuthEnabled } from "@/lib/env";
-import DashboardShell from "@/components/dashboard/DashboardShell";
+import { isOpenAccessMode } from "@/lib/env";
 import { isGuestUser } from "@/lib/guest-access";
 import Navbar from "@/components/Navbar";
 import { redirect } from "next/navigation";
@@ -18,8 +17,7 @@ export default async function Home() {
     <>
       <HeroSection
         user={authenticatedUser}
-        socialAuthEnabled={isSupabaseAuthEnabled()}
-        ssoEnabled={isSsoEnabled()}
+        allowAnonymousSubmit={isOpenAccessMode()}
       />
       <ProductProofSection />
     </>
